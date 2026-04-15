@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "npm --prefix taller install --include=dev && npm --prefix taller run dev",
-    "build": "npm --prefix taller install --include=dev && npm --prefix taller run build",
+    "build": "npm --prefix taller install --include=dev && npm --prefix taller run build && node scripts/sync-next-output.js",
     "start": "npm --prefix taller install --include=dev && npm --prefix taller run start",
     "lint": "npm --prefix taller install --include=dev && npm --prefix taller run lint"
   }
