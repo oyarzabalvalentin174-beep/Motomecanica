@@ -2,9 +2,9 @@
   "name": "taller-root-runner",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix taller run dev",
-    "build": "npm --prefix taller run build",
-    "start": "npm --prefix taller run start",
-    "lint": "npm --prefix taller run lint"
+    "dev": "npm --prefix taller install && npm --prefix taller run dev",
+    "build": "npm --prefix taller install && npm --prefix taller run build",
+    "start": "npm --prefix taller install && npm --prefix taller run start",
+    "lint": "npm --prefix taller install && npm --prefix taller run lint"
   }
 }
