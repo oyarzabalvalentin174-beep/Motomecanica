@@ -1,6 +1,11 @@
 {
   "name": "taller-root-runner",
   "private": true,
+  "dependencies": {
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
   "scripts": {
     "dev": "npm --prefix taller install && npm --prefix taller run dev",
     "build": "npm --prefix taller install && npm --prefix taller run build",
