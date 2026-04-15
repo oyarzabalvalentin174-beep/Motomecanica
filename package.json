@@ -7,9 +7,9 @@
     "react-dom": "19.2.3"
   },
   "scripts": {
-    "dev": "npm --prefix taller install && npm --prefix taller run dev",
-    "build": "npm --prefix taller install && npm --prefix taller run build",
-    "start": "npm --prefix taller install && npm --prefix taller run start",
-    "lint": "npm --prefix taller install && npm --prefix taller run lint"
+    "dev": "npm --prefix taller install --include=dev && npm --prefix taller run dev",
+    "build": "npm --prefix taller install --include=dev && npm --prefix taller run build",
+    "start": "npm --prefix taller install --include=dev && npm --prefix taller run start",
+    "lint": "npm --prefix taller install --include=dev && npm --prefix taller run lint"
   }
 }
