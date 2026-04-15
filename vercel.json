@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "installCommand": "npm --prefix taller install --include=dev",
+  "buildCommand": "npm --prefix taller run build",
+  "outputDirectory": "taller/.next"
 }
