@@ -15,8 +15,7 @@
     "next-auth": "^4.24.14",
     "pg-promise": "^12.6.2",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "taller-root-runner": "file:.."
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
