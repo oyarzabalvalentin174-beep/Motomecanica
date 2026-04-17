@@ -41,11 +41,41 @@ async function checkIPBlocked(ip) {
 }
 
 async function getUserByUsername(username) {
-  const result = await exec("spgetusuario", {
-    nombreusuario: username,
-    includehash: true,
-  });
-  return result?.data?.[0] || null;
+  const normalizedUsername = username?.trim();
+  if (!normalizedUsername) return null;
+
+  // Primary path: keep existing stored procedure behavior.
+  try {
+    const result = await exec("spgetusuario", {
+      nombreusuario: normalizedUsername,
+      includehash: true,
+    });
+    const userFromSp = result?.data?.[0] || null;
+    if (userFromSp) return userFromSp;
+  } catch {
+    // Fall through to direct query.
+  }
+
+  // Fallback path: direct query prevents auth outages when SP signatures drift.
+  try {
+    const rows = await query(
+      `select
+         id_usuario,
+         nombreusuario,
+         nombre,
+         apellido,
+         "contraseña" as contrasena,
+         ultimologin,
+         null::text as rol
+       from app.usuario
+       where lower(nombreusuario) = lower($1)
+       limit 1`,
+      [normalizedUsername],
+    );
+    return rows?.[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 async function checkUserBlocked(username) {
@@ -53,7 +83,7 @@ async function checkUserBlocked(username) {
     const rows = await query(
       `select bloqueado_hasta
        from app.usuario
-       where nombreusuario = $1
+       where lower(nombreusuario) = lower($1)
        limit 1`,
       [username],
     );
@@ -138,7 +168,8 @@ const authOptions = {
           throw new Error("Usuario o contraseña incorrectos");
         }
 
-        const storedPassword = user.contrasena || "";
+        const storedPassword =
+          user.contrasena || user["contraseña"] || user.contraseña || "";
         const passwordOk = storedPassword.startsWith("$2")
           ? await bcrypt.compare(password, storedPassword)
           : password === storedPassword;

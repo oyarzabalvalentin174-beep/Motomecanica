@@ -39,19 +39,21 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-4 py-8">
-      <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-8 flex flex-col items-center">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-zinc-100 via-zinc-50 to-white px-4 py-6 sm:px-6 sm:py-10">
+      <section className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white/95 p-5 shadow-xl shadow-zinc-900/10 backdrop-blur sm:p-8">
+        <div className="mb-7 flex flex-col items-center text-center sm:mb-8">
           <Image
             src="/logo.jpg"
             alt="Logo"
             width={120}
             height={120}
-            className="mb-4 rounded-xl object-cover"
+            className="mb-4 h-24 w-24 rounded-2xl border border-zinc-200 object-cover shadow-md sm:h-28 sm:w-28"
             priority
           />
-          <h1 className="text-2xl font-bold text-zinc-900">Iniciar sesión</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+            Iniciar sesión
+          </h1>
+          <p className="mt-2 text-sm text-zinc-600">
             Ingresá con tu usuario y contraseña
           </p>
         </div>
@@ -60,7 +62,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="username"
-              className="mb-1 block text-sm font-medium text-zinc-700"
+              className="mb-1.5 block text-sm font-medium text-zinc-800"
             >
               Usuario
             </label>
@@ -71,7 +73,7 @@ export default function LoginPage() {
               autoComplete="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 outline-none ring-0 transition focus:border-zinc-500"
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-base text-black outline-none ring-0 transition placeholder:text-zinc-400 focus:border-red-500 focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)] sm:text-sm"
               placeholder="nombreusuario"
               required
             />
@@ -80,7 +82,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="mb-1 block text-sm font-medium text-zinc-700"
+              className="mb-1.5 block text-sm font-medium text-zinc-800"
             >
               Contraseña
             </label>
@@ -91,14 +93,14 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 outline-none ring-0 transition focus:border-zinc-500"
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-base text-black outline-none ring-0 transition placeholder:text-zinc-400 focus:border-red-500 focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)] sm:text-sm"
               placeholder="********"
               required
             />
           </div>
 
           {errorMessage ? (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {errorMessage}
             </p>
           ) : null}
@@ -106,7 +108,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-lg bg-zinc-900 px-4 py-2 font-semibold text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 font-semibold text-white transition hover:bg-red-600 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_rgba(220,38,38,0.3)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSubmitting ? "Validando..." : "Entrar"}
           </button>
