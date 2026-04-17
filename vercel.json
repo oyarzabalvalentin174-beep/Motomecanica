@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "npm --prefix taller install --include=dev",
+  "installCommand": "npm install --include=dev && npm --prefix taller install --include=dev",
   "buildCommand": "npm --prefix taller run build",
   "outputDirectory": "taller/.next"
 }
