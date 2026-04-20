@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
+import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 
 const quickLinks = [
@@ -33,6 +34,7 @@ const quickLinks = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-100">
+      <GlobalPageLoader />
       <UserPop />
       <AppSidebar />
 
