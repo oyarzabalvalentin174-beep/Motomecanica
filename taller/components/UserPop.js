@@ -122,7 +122,7 @@ export default function UserPop({ loadAlerts }) {
   };
 
   return (
-    <header className="fixed inset-x-0 top-0 z-[1000] border-b border-slate-800 bg-slate-900/95 backdrop-blur">
+    <header className="fixed inset-x-0 top-0 z-[1000] border-b border-zinc-600/40 bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800 shadow-[inset_0_-1px_0_0_rgba(220,38,38,0.28),inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
         <div className="flex items-center gap-3">
           <button
@@ -130,15 +130,15 @@ export default function UserPop({ loadAlerts }) {
             aria-label="Abrir menú lateral"
             aria-expanded="false"
             onClick={handleMenuClick}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-slate-100 transition hover:border-blue-400 hover:bg-slate-700"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-500/45 bg-zinc-700/35 text-zinc-100 transition hover:border-red-500/55 hover:bg-red-600/85 hover:text-white"
           >
             <IconMenu />
           </button>
           <div className="min-w-0">
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
               Sistema de gestión
             </p>
-            <p className="truncate text-xs font-semibold text-white sm:text-sm">
+            <p className="truncate text-xs font-semibold text-zinc-50 sm:text-sm">
               {currentDate.toLocaleString("es-AR", {
                 weekday: "long",
                 day: "2-digit",
@@ -155,7 +155,7 @@ export default function UserPop({ loadAlerts }) {
             type="button"
             onClick={() => window.location.reload()}
             aria-label="Actualizar datos"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-slate-100 transition hover:border-blue-400 hover:bg-slate-700"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-500/45 bg-zinc-700/35 text-zinc-100 transition hover:border-red-500/55 hover:bg-red-600/85 hover:text-white"
           >
             <IconRefresh />
           </button>
@@ -163,11 +163,11 @@ export default function UserPop({ loadAlerts }) {
           <button
             type="button"
             aria-label="Alertas"
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-slate-100 transition hover:border-blue-400 hover:bg-slate-700"
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-500/45 bg-zinc-700/35 text-zinc-100 transition hover:border-red-500/55 hover:bg-red-600/85 hover:text-white"
           >
             <IconBell />
             {alertasCount.total > 0 ? (
-              <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+              <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-red-400/40">
                 {alertasCount.total}
               </span>
             ) : null}
@@ -178,20 +178,20 @@ export default function UserPop({ loadAlerts }) {
               type="button"
               onClick={() => setProfileMenuOpen((prev) => !prev)}
               aria-label="Opciones de usuario"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-slate-100 transition hover:border-blue-400 hover:bg-slate-700"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-500/45 bg-zinc-700/35 text-zinc-100 transition hover:border-red-500/55 hover:bg-red-600/85 hover:text-white"
             >
               <IconUser />
             </button>
 
             {profileMenuOpen ? (
-              <div className="absolute right-0 z-[2000] mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+              <div className="absolute right-0 z-[2000] mt-2 w-52 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-xl shadow-zinc-900/10">
                 <button
                   type="button"
                   onClick={() => {
                     setProfileMenuOpen(false);
                     router.push("/usuarios");
                   }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
                 >
                   Mi perfil
                 </button>

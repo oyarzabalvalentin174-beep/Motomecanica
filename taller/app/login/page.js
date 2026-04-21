@@ -39,7 +39,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-zinc-100 via-zinc-50 to-white px-4 py-6 sm:px-6 sm:py-10">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-zinc-200/80 via-zinc-50 to-white px-4 py-6 sm:px-6 sm:py-10">
       <section className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white/95 p-5 shadow-xl shadow-zinc-900/10 backdrop-blur sm:p-8">
         <div className="mb-7 flex flex-col items-center text-center sm:mb-8">
           <Image
@@ -108,7 +108,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 font-semibold text-white transition hover:bg-red-600 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_rgba(220,38,38,0.3)] disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-xl bg-zinc-950 px-4 py-2.5 font-semibold text-white transition hover:bg-red-600 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_rgba(220,38,38,0.35)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSubmitting ? "Validando..." : "Entrar"}
           </button>

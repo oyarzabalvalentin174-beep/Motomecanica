@@ -63,10 +63,10 @@ export default function Sidebar({ anchor = "left", width = "320px", children }) 
       position: "fixed",
       zIndex: 1300,
       transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)",
-      background: "#ffffff",
-      color: "#0f172a",
-      boxShadow: "0 20px 48px rgba(15, 23, 42, 0.18)",
-      borderRight: "1px solid rgba(226, 232, 240, 1)",
+      background: "#f4f4f5",
+      color: "#27272a",
+      boxShadow: "0 20px 48px rgba(24, 24, 27, 0.12)",
+      borderRight: "1px solid #d4d4d8",
     };
 
     if (anchor === "right") {
@@ -119,7 +119,7 @@ export default function Sidebar({ anchor = "left", width = "320px", children }) 
           type="button"
           aria-label="Cerrar menú lateral"
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-[1200] bg-slate-900/35 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[1200] bg-zinc-900/35 backdrop-blur-[3px]"
         />
       ) : null}
 

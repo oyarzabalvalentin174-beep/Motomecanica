@@ -146,14 +146,24 @@ export default function AppSidebar({ active }) {
   return (
     <Sidebar anchor="left" width="340px">
       <div className="flex h-full flex-col">
-        <div className="border-b border-blue-800 bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 px-5 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-100/90">
+        <div className="relative overflow-hidden border-b border-zinc-600/35 bg-gradient-to-br from-zinc-800 via-zinc-700 to-zinc-800 px-5 py-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-red-950/25 via-transparent to-transparent"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-90 shadow-[0_0_16px_rgba(220,38,38,0.45)]"
+            aria-hidden
+          />
+          <p className="relative text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
             Negocio Taller
           </p>
-          <h2 className="mt-1 text-xl font-semibold text-white">Panel principal</h2>
+          <h2 className="relative mt-1 text-xl font-semibold tracking-tight text-zinc-50">
+            Panel principal
+          </h2>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto bg-gradient-to-b from-zinc-100 to-zinc-50 px-3 py-4">
           {menuItems.map((item) => {
             const Icon = item.icon;
             if (item.type === "link") {
@@ -165,11 +175,11 @@ export default function AppSidebar({ active }) {
                   href={item.href}
                   className={`flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-[16px] font-semibold transition ${
                     isActive
-                      ? "bg-blue-100 text-blue-800 ring-1 ring-blue-200"
-                      : "text-slate-700 hover:bg-slate-200/70 hover:text-slate-900"
+                      ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200/90 shadow-[inset_3px_0_0_0_#dc2626]"
+                      : "text-zinc-600 hover:bg-zinc-200/65 hover:text-zinc-900"
                   }`}
                 >
-                  <span className={`${isActive ? "text-blue-700" : "text-slate-500"}`}>
+                  <span className={`${isActive ? "text-red-600" : "text-zinc-500"}`}>
                     <MenuIcon>
                       <Icon />
                     </MenuIcon>
@@ -193,17 +203,17 @@ export default function AppSidebar({ active }) {
                   }
                   className={`flex w-full items-center gap-3.5 rounded-xl px-3.5 py-3 text-[16px] font-semibold transition ${
                     isOpen
-                      ? "bg-slate-200/80 text-slate-900"
-                      : "text-slate-700 hover:bg-slate-200/70 hover:text-slate-900"
+                      ? "bg-zinc-200/70 text-zinc-900 ring-1 ring-zinc-300/40"
+                      : "text-zinc-600 hover:bg-zinc-200/65 hover:text-zinc-900"
                   }`}
                 >
-                  <span className={`${isOpen ? "text-slate-900" : "text-slate-500"}`}>
+                  <span className={`${isOpen ? "text-red-700" : "text-zinc-500"}`}>
                     <MenuIcon>
                       <Icon />
                     </MenuIcon>
                   </span>
                   <span className="flex-1 text-left">{item.label}</span>
-                  <span className="text-slate-500">
+                  <span className="text-zinc-500">
                     <IconChevron open={isOpen} />
                   </span>
                 </button>
@@ -223,8 +233,8 @@ export default function AppSidebar({ active }) {
                             href={child.href}
                             className={`block rounded-lg px-3 py-2.5 text-[15px] font-medium transition ${
                               isChildActive
-                                ? "bg-blue-100 text-blue-800"
-                                : "text-slate-600 hover:bg-slate-200/70 hover:text-slate-900"
+                                ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200/80 shadow-[inset_3px_0_0_0_#dc2626]"
+                                : "text-zinc-600 hover:bg-zinc-200/65 hover:text-zinc-900"
                             }`}
                           >
                             {child.label}
@@ -239,7 +249,7 @@ export default function AppSidebar({ active }) {
           })}
         </nav>
 
-        <div className="border-t border-slate-200 bg-white px-4 py-4">
+        <div className="border-t border-zinc-300/60 bg-gradient-to-b from-zinc-100 to-zinc-200/50 px-4 py-4">
           <button
             type="button"
             onClick={() => {
@@ -247,7 +257,7 @@ export default function AppSidebar({ active }) {
                 new CustomEvent("toggleSidebar", { detail: { isOpen: false } }),
               );
             }}
-            className="w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100"
+            className="w-full rounded-xl bg-gradient-to-r from-red-700 via-red-600 to-red-700 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-900/25 transition hover:from-red-600 hover:via-red-500 hover:to-red-600 hover:shadow-lg hover:shadow-red-900/30"
           >
             Cerrar menú
           </button>
