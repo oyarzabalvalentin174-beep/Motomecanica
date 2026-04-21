@@ -5,13 +5,31 @@ import { exec, query } from "@/components/db";
 
 console.log("🔥 NEXTAUTH FILE LOADED 🔥");
 
-function getRequestMeta(req) {
-  const headers = req?.headers;
+/** App Router: ejecución en Node (pg / bcrypt). */
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * NextAuth pasa a authorize(credentials, authContext) donde authContext es
+ * { query, body, headers, method } (no el Request de Next).
+ * También soportamos un objeto tipo Headers ( .get ).
+ */
+function getRequestMeta(authContext) {
+  const headers = authContext?.headers;
+  if (!headers) {
+    return { ip: "0.0.0.0", userAgent: "unknown" };
+  }
+
   const getHeader = (name) => {
-    if (!headers) return undefined;
-    if (typeof headers.get === "function") return headers.get(name);
-    if (typeof headers[name] === "string") return headers[name];
-    if (Array.isArray(headers[name])) return headers[name][0];
+    if (typeof headers.get === "function") {
+      return headers.get(name);
+    }
+    const lower = name.toLowerCase();
+    const key = Object.keys(headers).find((k) => k.toLowerCase() === lower);
+    if (!key) return undefined;
+    const v = headers[key];
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return v[0];
     return undefined;
   };
 
@@ -46,7 +64,6 @@ async function getUserByUsername(username) {
   const normalizedUsername = username?.trim();
   if (!normalizedUsername) return null;
 
-  // Primary path: keep existing stored procedure behavior.
   try {
     const result = await exec("spgetusuario", {
       nombreusuario: normalizedUsername,
@@ -58,7 +75,6 @@ async function getUserByUsername(username) {
     // Fall through to direct query.
   }
 
-  // Fallback path: direct query prevents auth outages when SP signatures drift.
   try {
     const rows = await query(
       `select
@@ -136,130 +152,107 @@ async function updateLastLogin(userId) {
 const authOptions = {
   session: { strategy: "jwt" },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  debug: process.env.NEXTAUTH_DEBUG === "1" || process.env.NEXTAUTH_DEBUG === "true",
   pages: {
     signIn: "/login",
   },
   providers: [
     Credentials({
+      id: "credentials",
       name: "Credentials",
       credentials: {
         username: { label: "Usuario", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials, req) {
+      async authorize(credentials, authContext) {
         console.log("🔥 AUTHORIZE RUNNING 🔥");
-        try {
-          console.log("=== LOGIN INTENTO ===");
-          console.log(
-            "Credenciales recibidas:",
-            credentials
-              ? {
-                  ...credentials,
-                  password:
-                    credentials.password != null && credentials.password !== ""
-                      ? `[present, length ${String(credentials.password).length}]`
-                      : credentials.password,
-                }
-              : credentials,
-          );
+        console.log("CREDENTIALS:", credentials);
 
-          const username = credentials?.username?.trim();
-          const password = credentials?.password || "";
-          const { ip, userAgent } = getRequestMeta(req);
-          console.log("Request meta:", { ip, userAgentLength: userAgent?.length });
+        const username = credentials?.username?.trim();
+        const password = credentials?.password || "";
+        const { ip, userAgent } = getRequestMeta(authContext);
 
-          if (!username || !password) {
-            console.log("❌ ERROR: missing_credentials");
-            return null;
-          }
+        console.log("authorize meta:", {
+          ip,
+          userAgentSnippet: String(userAgent).slice(0, 80),
+          hasUsername: Boolean(username),
+          passwordLength: password.length,
+        });
 
-          if (await checkIPBlocked(ip)) {
-            console.log("❌ ERROR: ip_blocked", { ip });
-            return null;
-          }
-
-          if (await checkUserBlocked(username)) {
-            console.log("❌ ERROR: user_blocked", { ip });
-            return null;
-          }
-
-          const user = await getUserByUsername(username);
-
-          const userForLog = user
-            ? {
-                id_usuario: user.id_usuario,
-                nombreusuario: user.nombreusuario,
-                storedPasswordLen: String(
-                  user.contrasena ||
-                    user["contraseña"] ||
-                    user.contraseña ||
-                    "",
-                ).length,
-                usesBcryptHint: String(
-                  user.contrasena ||
-                    user["contraseña"] ||
-                    user.contraseña ||
-                    "",
-                ).startsWith("$2"),
-              }
-            : null;
-          console.log("Resultado de la query:", userForLog);
-
-          if (!user) {
-            console.log("❌ ERROR: user_not_found");
-            await registerLoginAttempt(null, ip, false);
-            await securityLog(null, ip, userAgent, false, "user_not_found");
-            return null;
-          }
-
-          const storedPassword =
-            user.contrasena || user["contraseña"] || user.contraseña || "";
-          const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
-          const passwordOk = usesBcrypt
-            ? await bcrypt.compare(password, storedPassword)
-            : password === storedPassword;
-
-          console.log("Validación contraseña:", {
-            usesBcrypt,
-            storedPasswordLength: storedPassword.length,
-            passwordOk,
-          });
-
-          await registerLoginAttempt(user.id_usuario, ip, passwordOk);
-
-          if (!passwordOk) {
-            console.log("❌ ERROR: invalid_password");
-            await securityLog(
-              user.id_usuario,
-              ip,
-              userAgent,
-              false,
-              "invalid_password",
-            );
-            return null;
-          }
-
-          await securityLog(user.id_usuario, ip, userAgent, true, "login_success");
-          await updateLastLogin(user.id_usuario);
-
-          const sessionUser = {
-            id: String(user.id_usuario),
-            id_usuario: user.id_usuario,
-            username: user.nombreusuario,
-            nombre: user.nombre,
-            apellido: user.apellido,
-            ultimologin: user.ultimologin || null,
-            rol: user.rol || null,
-          };
-          console.log("✅ LOGIN OK:", {
-            id_usuario: sessionUser.id_usuario,
-            username: sessionUser.username,
-          });
-          return sessionUser;
-        } catch (error) {
-          console.log("❌ ERROR EN AUTHORIZE:", error);
-          return null;
+        if (!username || !password) {
+          console.log("authorize fail: missing_credentials");
+          throw new Error("Usuario y contraseña requeridos");
         }
+
+        if (await checkIPBlocked(ip)) {
+          console.log("authorize fail: ip_blocked", { ip });
+          throw new Error("IP temporalmente bloqueada por intentos fallidos");
+        }
+
+        if (await checkUserBlocked(username)) {
+          console.log("authorize fail: user_blocked");
+          throw new Error("Usuario bloqueado temporalmente");
+        }
+
+        const user = await getUserByUsername(username);
+
+        console.log("authorize user lookup:", {
+          found: Boolean(user),
+          id_usuario: user?.id_usuario ?? null,
+          nombreusuario: user?.nombreusuario ?? null,
+        });
+
+        if (!user) {
+          await registerLoginAttempt(null, ip, false);
+          await securityLog(null, ip, userAgent, false, "user_not_found");
+          throw new Error("Usuario o contraseña incorrectos");
+        }
+
+        const storedPassword =
+          user.contrasena || user["contraseña"] || user.contraseña || "";
+        const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
+        const passwordOk = usesBcrypt
+          ? await bcrypt.compare(password, storedPassword)
+          : password === storedPassword;
+
+        console.log("authorize password check:", {
+          usesBcrypt,
+          storedPasswordLength: storedPassword.length,
+          passwordOk,
+        });
+
+        await registerLoginAttempt(user.id_usuario, ip, passwordOk);
+
+        if (!passwordOk) {
+          await securityLog(
+            user.id_usuario,
+            ip,
+            userAgent,
+            false,
+            "invalid_password",
+          );
+          throw new Error("Usuario o contraseña incorrectos");
+        }
+
+        await securityLog(user.id_usuario, ip, userAgent, true, "login_success");
+        await updateLastLogin(user.id_usuario);
+
+        const sessionUser = {
+          id: String(user.id_usuario),
+          id_usuario: user.id_usuario,
+          username: user.nombreusuario,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          ultimologin: user.ultimologin || null,
+          rol: user.rol || null,
+        };
+
+        console.log("authorize success:", {
+          id_usuario: sessionUser.id_usuario,
+          username: sessionUser.username,
+        });
+
+        return sessionUser;
       },
     }),
   ],
@@ -288,6 +281,24 @@ const authOptions = {
   },
 };
 
-const handler = NextAuth(authOptions);
+const nextAuthHandler = NextAuth(authOptions);
 
-export { handler as GET, handler as POST };
+export async function GET(req, ctx) {
+  try {
+    const path = req.nextUrl?.pathname ?? "";
+    console.log("🔥 NEXTAUTH ROUTE GET", path);
+  } catch {
+    console.log("🔥 NEXTAUTH ROUTE GET (path unavailable)");
+  }
+  return nextAuthHandler(req, ctx);
+}
+
+export async function POST(req, ctx) {
+  try {
+    const path = req.nextUrl?.pathname ?? "";
+    console.log("🔥 NEXTAUTH ROUTE POST", path);
+  } catch {
+    console.log("🔥 NEXTAUTH ROUTE POST (path unavailable)");
+  }
+  return nextAuthHandler(req, ctx);
+}
