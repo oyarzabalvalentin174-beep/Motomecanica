@@ -3,6 +3,8 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { exec, query } from "@/components/db";
 
+console.log("🔥 NEXTAUTH CARGADO 🔥");
+
 function getRequestMeta(req) {
   const headers = req?.headers;
   const getHeader = (name) => {
@@ -145,7 +147,7 @@ const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, req) {
-        console.log("🔥 AUTHORIZE SE ESTA EJECUTANDO 🔥");
+        console.log("🔥 AUTHORIZE RUNNING 🔥");
         try {
           console.log("=== LOGIN INTENTO ===");
           console.log(
