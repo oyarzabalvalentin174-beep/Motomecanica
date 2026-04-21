@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { exec, query } from "@/components/db";
 
-console.log("🔥 NEXTAUTH CARGADO 🔥");
+console.log("🔥 NEXTAUTH FILE LOADED 🔥");
 
 function getRequestMeta(req) {
   const headers = req?.headers;
