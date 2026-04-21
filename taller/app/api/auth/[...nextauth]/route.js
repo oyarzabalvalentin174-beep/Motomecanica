@@ -145,6 +145,7 @@ const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, req) {
+        console.log("🔥 AUTHORIZE SE ESTA EJECUTANDO 🔥");
         try {
           console.log("=== LOGIN INTENTO ===");
           console.log(
