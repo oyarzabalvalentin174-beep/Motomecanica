@@ -3,6 +3,26 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { exec, query } from "@/components/db";
 
+/** true = logs detallados (usuario completo, checks). En Vercel: AUTH_DEBUG=1 */
+function isAuthVerbose() {
+  return (
+    process.env.AUTH_DEBUG === "1" ||
+    process.env.AUTH_DEBUG === "true" ||
+    process.env.NODE_ENV !== "production"
+  );
+}
+
+/** Nunca escribe contraseña ni hash. En producción sin AUTH_DEBUG solo loguea authorize_fail. */
+function logCredentials(event, payload = {}) {
+  const verbose = isAuthVerbose();
+  if (!verbose && event !== "authorize_fail") return;
+  const { password: _p, storedPasswordPreview: _s, ...rest } = payload;
+  console.log(
+    `[nextauth][credentials][${event}]`,
+    JSON.stringify({ ...rest, ts: new Date().toISOString() }),
+  );
+}
+
 function getRequestMeta(req) {
   const headers = req?.headers;
   const getHeader = (name) => {
@@ -149,34 +169,74 @@ const authOptions = {
         const password = credentials?.password || "";
         const { ip, userAgent } = getRequestMeta(req);
 
+        logCredentials("authorize_enter", {
+          ...(isAuthVerbose()
+            ? { username: username || null }
+            : { usernameLength: username?.length ?? 0 }),
+          hasUsername: Boolean(username),
+          passwordLength: password.length,
+          credentialKeys: credentials ? Object.keys(credentials) : [],
+          ip,
+          userAgentLength: userAgent?.length ?? 0,
+        });
+
         if (!username || !password) {
+          logCredentials("authorize_fail", {
+            reason: "missing_credentials",
+            hasUsername: Boolean(username),
+            hasPassword: Boolean(password),
+          });
           throw new Error("Usuario y contraseña requeridos");
         }
 
         if (await checkIPBlocked(ip)) {
+          logCredentials("authorize_fail", { reason: "ip_blocked", ip });
           throw new Error("IP temporalmente bloqueada por intentos fallidos");
         }
 
         if (await checkUserBlocked(username)) {
+          logCredentials("authorize_fail", { reason: "user_blocked", ip });
           throw new Error("Usuario bloqueado temporalmente");
         }
 
         const user = await getUserByUsername(username);
         if (!user) {
+          logCredentials("authorize_fail", {
+            reason: "user_not_found",
+            lookedUpUsernameLen: username.length,
+          });
           await registerLoginAttempt(null, ip, false);
           await securityLog(null, ip, userAgent, false, "user_not_found");
           throw new Error("Usuario o contraseña incorrectos");
         }
 
+        logCredentials("user_loaded", {
+          id_usuario: user.id_usuario,
+          nombreusuarioLen: user.nombreusuario?.length ?? 0,
+        });
+
         const storedPassword =
           user.contrasena || user["contraseña"] || user.contraseña || "";
-        const passwordOk = storedPassword.startsWith("$2")
+        const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
+        const passwordOk = usesBcrypt
           ? await bcrypt.compare(password, storedPassword)
           : password === storedPassword;
+
+        logCredentials("password_check", {
+          id_usuario: user.id_usuario,
+          usesBcrypt,
+          storedPasswordLength: storedPassword.length,
+          passwordOk,
+        });
 
         await registerLoginAttempt(user.id_usuario, ip, passwordOk);
 
         if (!passwordOk) {
+          logCredentials("authorize_fail", {
+            reason: "invalid_password",
+            id_usuario: user.id_usuario,
+            usesBcrypt,
+          });
           await securityLog(
             user.id_usuario,
             ip,
@@ -189,6 +249,10 @@ const authOptions = {
 
         await securityLog(user.id_usuario, ip, userAgent, true, "login_success");
         await updateLastLogin(user.id_usuario);
+
+        logCredentials("authorize_ok", {
+          id_usuario: user.id_usuario,
+        });
 
         return {
           id: String(user.id_usuario),
