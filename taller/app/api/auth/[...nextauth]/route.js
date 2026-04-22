@@ -5,6 +5,15 @@ import { exec, query } from "@/components/db";
 
 console.log("🔥 NEXTAUTH FILE LOADED 🔥");
 
+function logCredentials(event, payload = {}) {
+  const { password: _p, storedPasswordPreview: _s, ...rest } = payload;
+  console.log(
+    "[AUTH DEBUG]",
+    event,
+    JSON.stringify({ ...rest, ts: new Date().toISOString() }),
+  );
+}
+
 /** App Router: ejecución en Node (pg / bcrypt). */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -165,10 +174,17 @@ const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, authContext) {
+        console.log("=== AUTHORIZE START ===");
+        console.log("RAW CREDENTIALS:", credentials);
         console.log("🔥 AUTHORIZE RUNNING 🔥");
         const username = credentials?.username?.trim();
         const password = credentials?.password || "";
         const { ip, userAgent } = getRequestMeta(authContext);
+        logCredentials("authorize_enter", {
+          username,
+          passwordLength: password?.length,
+          ip,
+        });
 
         console.log("=== LOGIN INTENTO ===");
         console.log("USERNAME:", username);
@@ -194,17 +210,7 @@ const authOptions = {
         }
 
         const user = await getUserByUsername(username);
-
-        console.log(
-          "USER FROM DB:",
-          user
-            ? {
-                id: user.id_usuario,
-                username: user.nombreusuario,
-                hasPassword: !!(user.contrasena || user["contraseña"]),
-              }
-            : null,
-        );
+        console.log("USER RESULT:", user);
 
         if (!user) {
           await registerLoginAttempt(null, ip, false);
@@ -214,6 +220,9 @@ const authOptions = {
 
         const storedPassword =
           user?.contrasena || user?.["contraseña"] || user?.contraseña || "";
+        console.log("STORED PASSWORD:", storedPassword);
+        console.log("STORED LENGTH:", storedPassword?.length);
+        console.log("IS BCRYPT:", storedPassword?.startsWith("$2"));
         console.log("STORED PASSWORD LENGTH:", storedPassword.length);
         console.log("USES BCRYPT:", storedPassword.startsWith("$2"));
         const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
