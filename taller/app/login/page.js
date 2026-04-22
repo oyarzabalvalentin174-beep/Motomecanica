@@ -14,18 +14,23 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    console.log("SUBMIT TRIGGERED");
+    const username = event.target.username.value;
+    const password = event.target.password.value;
+
     setErrorMessage("");
     setIsSubmitting(true);
 
     try {
-      const result = await signIn("credentials", {
+      const res = await signIn("credentials", {
         username,
         password,
         redirect: false,
       });
+      console.log("LOGIN RESPONSE:", res);
 
-      if (!result?.ok) {
-        setErrorMessage(result?.error || "No se pudo iniciar sesión");
+      if (!res?.ok) {
+        setErrorMessage(res?.error || "No se pudo iniciar sesión");
         return;
       }
 
