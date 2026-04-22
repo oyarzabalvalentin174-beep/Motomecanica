@@ -80,8 +80,14 @@ async function getUserByUsername(username) {
     });
     const userFromSp = result?.data?.[0] || null;
     if (userFromSp) return userFromSp;
-  } catch {
-    // Fall through to direct query.
+    console.log("getUserByUsername: SP without user", {
+      username: normalizedUsername,
+    });
+  } catch (error) {
+    console.log("getUserByUsername: SP error", {
+      username: normalizedUsername,
+      message: error?.message,
+    });
   }
 
   try {
@@ -95,12 +101,20 @@ async function getUserByUsername(username) {
          ultimologin,
          null::text as rol
        from app.usuario
-       where lower(nombreusuario) = lower($1)
+       where lower(trim(nombreusuario)) = lower(trim($1))
        limit 1`,
       [normalizedUsername],
     );
+    console.log("getUserByUsername: fallback rows", {
+      username: normalizedUsername,
+      count: rows?.length ?? 0,
+    });
     return rows?.[0] || null;
-  } catch {
+  } catch (error) {
+    console.log("getUserByUsername: fallback query error", {
+      username: normalizedUsername,
+      message: error?.message,
+    });
     return null;
   }
 }
