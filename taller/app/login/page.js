@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -15,31 +13,22 @@ export default function LoginPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     console.log("SUBMIT TRIGGERED");
-    const username = event.target.username.value;
-    const password = event.target.password.value;
-
     setErrorMessage("");
     setIsSubmitting(true);
 
-    try {
-      console.log("SUBMIT DATA:", { username, password });
-      const res = await signIn("credentials", {
-        username,
-        password,
-        redirect: false,
-      });
-      console.log("LOGIN RESPONSE:", res);
+    const res = await signIn("credentials", {
+      username: username,
+      password: password,
+      redirect: false,
+    });
 
-      if (!res?.ok) {
-        setErrorMessage(res?.error || "No se pudo iniciar sesión");
-        return;
-      }
+    console.log("LOGIN RESPONSE:", res);
 
-      router.push("/");
-      router.refresh();
-    } catch {
-      setErrorMessage("Error inesperado al iniciar sesión");
-    } finally {
+    if (res?.ok) {
+      window.location.href = "/";
+    } else {
+      console.error("LOGIN ERROR:", res?.error);
+      setErrorMessage(res?.error || "No se pudo iniciar sesión");
       setIsSubmitting(false);
     }
   };
@@ -116,7 +105,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-zinc-950 px-4 py-2.5 font-semibold text-white transition hover:bg-red-600 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_rgba(220,38,38,0.35)] disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isSubmitting ? "Validando..." : "Entrar"}
+            {isSubmitting ? "Validando..." : "Ingresar"}
           </button>
         </form>
       </section>
