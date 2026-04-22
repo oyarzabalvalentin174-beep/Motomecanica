@@ -292,14 +292,14 @@ const authOptions = {
   },
 };
 
-const nextAuthHandler = NextAuth(authOptions);
+const handler = NextAuth(authOptions);
 
 export async function GET(req, ctx) {
   console.log("🔥 NEXTAUTH GET HIT 🔥", req.url);
-  return nextAuthHandler(req, ctx);
+  return handler(req, ctx);
 }
 
 export async function POST(req, ctx) {
   console.log("🔥 NEXTAUTH POST HIT 🔥", req.url);
-  return nextAuthHandler(req, ctx);
+  return handler(req, ctx);
 }
