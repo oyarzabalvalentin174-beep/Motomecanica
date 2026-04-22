@@ -166,17 +166,16 @@ const authOptions = {
       },
       async authorize(credentials, authContext) {
         console.log("🔥 AUTHORIZE RUNNING 🔥");
-        console.log("CREDENTIALS:", credentials);
-
         const username = credentials?.username?.trim();
         const password = credentials?.password || "";
         const { ip, userAgent } = getRequestMeta(authContext);
 
-        console.log("authorize meta:", {
+        console.log("=== LOGIN INTENTO ===");
+        console.log("USERNAME:", username);
+        console.log("PASSWORD LENGTH:", password?.length);
+        console.log("REQUEST META:", {
           ip,
           userAgentSnippet: String(userAgent).slice(0, 80),
-          hasUsername: Boolean(username),
-          passwordLength: password.length,
         });
 
         if (!username || !password) {
@@ -196,11 +195,16 @@ const authOptions = {
 
         const user = await getUserByUsername(username);
 
-        console.log("authorize user lookup:", {
-          found: Boolean(user),
-          id_usuario: user?.id_usuario ?? null,
-          nombreusuario: user?.nombreusuario ?? null,
-        });
+        console.log(
+          "USER FROM DB:",
+          user
+            ? {
+                id: user.id_usuario,
+                username: user.nombreusuario,
+                hasPassword: !!(user.contrasena || user["contraseña"]),
+              }
+            : null,
+        );
 
         if (!user) {
           await registerLoginAttempt(null, ip, false);
@@ -209,17 +213,15 @@ const authOptions = {
         }
 
         const storedPassword =
-          user.contrasena || user["contraseña"] || user.contraseña || "";
+          user?.contrasena || user?.["contraseña"] || user?.contraseña || "";
+        console.log("STORED PASSWORD LENGTH:", storedPassword.length);
+        console.log("USES BCRYPT:", storedPassword.startsWith("$2"));
         const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
         const passwordOk = usesBcrypt
           ? await bcrypt.compare(password, storedPassword)
           : password === storedPassword;
 
-        console.log("authorize password check:", {
-          usesBcrypt,
-          storedPasswordLength: storedPassword.length,
-          passwordOk,
-        });
+        console.log("PASSWORD OK:", passwordOk);
 
         await registerLoginAttempt(user.id_usuario, ip, passwordOk);
 
