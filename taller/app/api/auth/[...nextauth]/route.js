@@ -175,7 +175,15 @@ const authOptions = {
       },
       async authorize(credentials, authContext) {
         console.log("🔥 AUTHORIZE RUNNING 🔥");
-        console.log("CREDENTIALS:", credentials);
+        console.log(
+          "CREDENTIALS:",
+          process.env.NODE_ENV === "production"
+            ? {
+                username: credentials?.username,
+                password: credentials?.password ? "[REDACTED]" : credentials?.password,
+              }
+            : credentials,
+        );
         console.log("=== AUTHORIZE START ===");
         const username = credentials?.username?.trim();
         const password = credentials?.password || "";
@@ -193,6 +201,12 @@ const authOptions = {
           ip,
           userAgentSnippet: String(userAgent).slice(0, 80),
         });
+        console.log("🌍 ENV CHECK:");
+        console.log(
+          "DATABASE_URL:",
+          process.env.DATABASE_URL ? "EXISTS" : "MISSING",
+        );
+        console.log("NODE_ENV:", process.env.NODE_ENV);
 
         if (!username || !password) {
           console.log("authorize fail: missing_credentials");
@@ -210,6 +224,7 @@ const authOptions = {
         }
 
         const user = await getUserByUsername(username);
+        console.log("👤 USER FROM DB:", user);
         console.log("USER RESULT:", user);
 
         if (!user) {
@@ -220,7 +235,10 @@ const authOptions = {
 
         const storedPassword =
           user?.contrasena || user?.["contraseña"] || user?.contraseña || "";
-        console.log("STORED PASSWORD:", storedPassword);
+        console.log(
+          "STORED PASSWORD:",
+          process.env.NODE_ENV === "production" ? "[REDACTED]" : storedPassword,
+        );
         console.log("STORED LENGTH:", storedPassword?.length);
         console.log("IS BCRYPT:", storedPassword?.startsWith("$2"));
         console.log("STORED PASSWORD LENGTH:", storedPassword.length);
