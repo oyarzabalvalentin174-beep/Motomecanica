@@ -22,6 +22,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
+      console.log("SUBMIT DATA:", { username, password });
       const res = await signIn("credentials", {
         username,
         password,

@@ -174,9 +174,9 @@ const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, authContext) {
-        console.log("=== AUTHORIZE START ===");
-        console.log("RAW CREDENTIALS:", credentials);
         console.log("🔥 AUTHORIZE RUNNING 🔥");
+        console.log("CREDENTIALS:", credentials);
+        console.log("=== AUTHORIZE START ===");
         const username = credentials?.username?.trim();
         const password = credentials?.password || "";
         const { ip, userAgent } = getRequestMeta(authContext);
@@ -295,21 +295,11 @@ const authOptions = {
 const nextAuthHandler = NextAuth(authOptions);
 
 export async function GET(req, ctx) {
-  try {
-    const path = req.nextUrl?.pathname ?? "";
-    console.log("🔥 NEXTAUTH ROUTE GET", path);
-  } catch {
-    console.log("🔥 NEXTAUTH ROUTE GET (path unavailable)");
-  }
+  console.log("🔥 NEXTAUTH GET HIT 🔥", req.url);
   return nextAuthHandler(req, ctx);
 }
 
 export async function POST(req, ctx) {
-  try {
-    const path = req.nextUrl?.pathname ?? "";
-    console.log("🔥 NEXTAUTH ROUTE POST", path);
-  } catch {
-    console.log("🔥 NEXTAUTH ROUTE POST (path unavailable)");
-  }
+  console.log("🔥 NEXTAUTH POST HIT 🔥", req.url);
   return nextAuthHandler(req, ctx);
 }
