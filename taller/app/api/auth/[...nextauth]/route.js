@@ -242,6 +242,14 @@ const authOptions = {
         console.log("USER RESULT:", user);
 
         if (!user) {
+          console.error(
+            "[TALLER_AUTH]",
+            JSON.stringify({
+              outcome: "USER_NOT_FOUND",
+              usernameLen: username?.length ?? 0,
+              ts: new Date().toISOString(),
+            }),
+          );
           await registerLoginAttempt(null, ip, false);
           await securityLog(null, ip, userAgent, false, "user_not_found");
           throw new Error("Usuario o contraseña incorrectos");
@@ -267,6 +275,16 @@ const authOptions = {
         await registerLoginAttempt(user.id_usuario, ip, passwordOk);
 
         if (!passwordOk) {
+          console.error(
+            "[TALLER_AUTH]",
+            JSON.stringify({
+              outcome: "BAD_PASSWORD",
+              id_usuario: user.id_usuario,
+              usesBcrypt,
+              storedLen: storedPassword?.length ?? 0,
+              ts: new Date().toISOString(),
+            }),
+          );
           await securityLog(
             user.id_usuario,
             ip,
