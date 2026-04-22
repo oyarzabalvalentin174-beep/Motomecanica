@@ -11,7 +11,12 @@ function getDb() {
     throw new Error("Missing DATABASE_URL environment variable");
   }
 
-  dbInstance = pgp(connectionString);
+  // Supabase pooler (6543 / transaction mode) no soporta prepared statements como Postgres directo.
+  dbInstance = pgp({
+    connectionString,
+    max: 1,
+    prepareThreshold: 0,
+  });
   return dbInstance;
 }
 
