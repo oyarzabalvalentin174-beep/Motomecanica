@@ -11,12 +11,24 @@ function getDb() {
     throw new Error("Missing DATABASE_URL environment variable");
   }
 
+  const relaxSsl =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "false" ||
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "0";
+
   // Supabase pooler (6543 / transaction mode) no soporta prepared statements como Postgres directo.
-  dbInstance = pgp({
+  const cn = {
     connectionString,
     max: 1,
     prepareThreshold: 0,
-  });
+  };
+
+  // En algunos entornos (p. ej. Windows) Node falla con "self-signed certificate in certificate chain"
+  // hacia el pooler; DATABASE_SSL_REJECT_UNAUTHORIZED=false desactiva esa verificación (sigue TLS cifrado).
+  if (relaxSsl) {
+    cn.ssl = { rejectUnauthorized: false };
+  }
+
+  dbInstance = pgp(cn);
   return dbInstance;
 }
 

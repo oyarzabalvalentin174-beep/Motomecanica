@@ -12,7 +12,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    console.log("SUBMIT TRIGGERED");
     setErrorMessage("");
     setIsSubmitting(true);
 
@@ -22,12 +21,9 @@ export default function LoginPage() {
       redirect: false,
     });
 
-    console.log("LOGIN RESPONSE:", res);
-
     if (res?.ok) {
       window.location.href = "/";
     } else {
-      console.error("LOGIN ERROR:", res?.error);
       setErrorMessage(res?.error || "No se pudo iniciar sesión");
       setIsSubmitting(false);
     }

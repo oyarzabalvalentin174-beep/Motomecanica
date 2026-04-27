@@ -3,17 +3,6 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { exec, query } from "@/components/db";
 
-console.log("🔥 NEXTAUTH FILE LOADED 🔥");
-
-function logCredentials(event, payload = {}) {
-  const { password: _p, storedPasswordPreview: _s, ...rest } = payload;
-  console.log(
-    "[AUTH DEBUG]",
-    event,
-    JSON.stringify({ ...rest, ts: new Date().toISOString() }),
-  );
-}
-
 /** App Router: ejecución en Node (pg / bcrypt). */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,14 +69,8 @@ async function getUserByUsername(username) {
     });
     const userFromSp = result?.data?.[0] || null;
     if (userFromSp) return userFromSp;
-    console.log("getUserByUsername: SP without user", {
-      username: normalizedUsername,
-    });
-  } catch (error) {
-    console.log("getUserByUsername: SP error", {
-      username: normalizedUsername,
-      message: error?.message,
-    });
+  } catch {
+    // SP falló; se intenta consulta directa.
   }
 
   try {
@@ -105,16 +88,8 @@ async function getUserByUsername(username) {
        limit 1`,
       [normalizedUsername],
     );
-    console.log("getUserByUsername: fallback rows", {
-      username: normalizedUsername,
-      count: rows?.length ?? 0,
-    });
     return rows?.[0] || null;
-  } catch (error) {
-    console.log("getUserByUsername: fallback query error", {
-      username: normalizedUsername,
-      message: error?.message,
-    });
+  } catch {
     return null;
   }
 }
@@ -163,19 +138,26 @@ async function securityLog(userId, ip, userAgent, success, reason = null) {
 
 async function updateLastLogin(userId) {
   try {
-    await exec("spupdateusuarios", {
-      _id_usuario: userId,
-      _ultimologin: new Date(),
+    await exec("spupsertusuario", {
+      data: JSON.stringify([{ id_usuario: Number(userId), ultimologin: new Date().toISOString() }]),
+      id_usuario: Number(userId),
     });
   } catch {
     // Non-critical side effect.
   }
 }
 
+const authDebug =
+  process.env.NEXTAUTH_DEBUG === "1" || process.env.NEXTAUTH_DEBUG === "true";
+
+function authLog(...args) {
+  if (authDebug) console.log("[next-auth]", ...args);
+}
+
 const authOptions = {
   session: { strategy: "jwt" },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
-  debug: process.env.NEXTAUTH_DEBUG === "1" || process.env.NEXTAUTH_DEBUG === "true",
+  debug: authDebug,
   pages: {
     signIn: "/login",
   },
@@ -188,68 +170,26 @@ const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, authContext) {
-        console.log("🔥 AUTHORIZE RUNNING 🔥");
-        console.log(
-          "CREDENTIALS:",
-          process.env.NODE_ENV === "production"
-            ? {
-                username: credentials?.username,
-                password: credentials?.password ? "[REDACTED]" : credentials?.password,
-              }
-            : credentials,
-        );
-        console.log("=== AUTHORIZE START ===");
         const username = credentials?.username?.trim();
         const password = credentials?.password || "";
         const { ip, userAgent } = getRequestMeta(authContext);
-        logCredentials("authorize_enter", {
-          username,
-          passwordLength: password?.length,
-          ip,
-        });
-
-        console.log("=== LOGIN INTENTO ===");
-        console.log("USERNAME:", username);
-        console.log("PASSWORD LENGTH:", password?.length);
-        console.log("REQUEST META:", {
-          ip,
-          userAgentSnippet: String(userAgent).slice(0, 80),
-        });
-        console.log("🌍 ENV CHECK:");
-        console.log(
-          "DATABASE_URL:",
-          process.env.DATABASE_URL ? "EXISTS" : "MISSING",
-        );
-        console.log("NODE_ENV:", process.env.NODE_ENV);
 
         if (!username || !password) {
-          console.log("authorize fail: missing_credentials");
           throw new Error("Usuario y contraseña requeridos");
         }
 
         if (await checkIPBlocked(ip)) {
-          console.log("authorize fail: ip_blocked", { ip });
           throw new Error("IP temporalmente bloqueada por intentos fallidos");
         }
 
         if (await checkUserBlocked(username)) {
-          console.log("authorize fail: user_blocked");
           throw new Error("Usuario bloqueado temporalmente");
         }
 
         const user = await getUserByUsername(username);
-        console.log("👤 USER FROM DB:", user);
-        console.log("USER RESULT:", user);
 
         if (!user) {
-          console.error(
-            "[TALLER_AUTH]",
-            JSON.stringify({
-              outcome: "USER_NOT_FOUND",
-              usernameLen: username?.length ?? 0,
-              ts: new Date().toISOString(),
-            }),
-          );
+          authLog("USER_NOT_FOUND", { usernameLen: username.length });
           await registerLoginAttempt(null, ip, false);
           await securityLog(null, ip, userAgent, false, "user_not_found");
           throw new Error("Usuario o contraseña incorrectos");
@@ -257,34 +197,19 @@ const authOptions = {
 
         const storedPassword =
           user?.contrasena || user?.["contraseña"] || user?.contraseña || "";
-        console.log(
-          "STORED PASSWORD:",
-          process.env.NODE_ENV === "production" ? "[REDACTED]" : storedPassword,
-        );
-        console.log("STORED LENGTH:", storedPassword?.length);
-        console.log("IS BCRYPT:", storedPassword?.startsWith("$2"));
-        console.log("STORED PASSWORD LENGTH:", storedPassword.length);
-        console.log("USES BCRYPT:", storedPassword.startsWith("$2"));
         const usesBcrypt = Boolean(storedPassword.startsWith("$2"));
         const passwordOk = usesBcrypt
           ? await bcrypt.compare(password, storedPassword)
           : password === storedPassword;
 
-        console.log("PASSWORD OK:", passwordOk);
-
         await registerLoginAttempt(user.id_usuario, ip, passwordOk);
 
         if (!passwordOk) {
-          console.error(
-            "[TALLER_AUTH]",
-            JSON.stringify({
-              outcome: "BAD_PASSWORD",
-              id_usuario: user.id_usuario,
-              usesBcrypt,
-              storedLen: storedPassword?.length ?? 0,
-              ts: new Date().toISOString(),
-            }),
-          );
+          authLog("BAD_PASSWORD", {
+            id_usuario: user.id_usuario,
+            usesBcrypt,
+            storedLen: storedPassword?.length ?? 0,
+          });
           await securityLog(
             user.id_usuario,
             ip,
@@ -298,7 +223,7 @@ const authOptions = {
         await securityLog(user.id_usuario, ip, userAgent, true, "login_success");
         await updateLastLogin(user.id_usuario);
 
-        const sessionUser = {
+        return {
           id: String(user.id_usuario),
           id_usuario: user.id_usuario,
           username: user.nombreusuario,
@@ -307,13 +232,6 @@ const authOptions = {
           ultimologin: user.ultimologin || null,
           rol: user.rol || null,
         };
-
-        console.log("authorize success:", {
-          id_usuario: sessionUser.id_usuario,
-          username: sessionUser.username,
-        });
-
-        return sessionUser;
       },
     }),
   ],
@@ -344,12 +262,12 @@ const authOptions = {
 
 const handler = NextAuth(authOptions);
 
+export { authOptions };
+
 export async function GET(req, ctx) {
-  console.log("🔥 NEXTAUTH GET HIT 🔥", req.url);
   return handler(req, ctx);
 }
 
 export async function POST(req, ctx) {
-  console.log("🔥 NEXTAUTH POST HIT 🔥", req.url);
   return handler(req, ctx);
 }
