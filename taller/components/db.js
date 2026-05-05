@@ -1,10 +1,15 @@
 import pgPromise from "pg-promise";
 
-const pgp = pgPromise({});
-let dbInstance;
+const GLOBAL_KEY = "__taller_db_singleton__";
+const PGP_KEY = "__taller_pgp_singleton__";
 
 function getDb() {
-  if (dbInstance) return dbInstance;
+  if (!globalThis[PGP_KEY]) {
+    globalThis[PGP_KEY] = pgPromise({});
+  }
+  if (globalThis[GLOBAL_KEY]) {
+    return globalThis[GLOBAL_KEY];
+  }
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -28,7 +33,8 @@ function getDb() {
     cn.ssl = { rejectUnauthorized: false };
   }
 
-  dbInstance = pgp(cn);
+  const dbInstance = globalThis[PGP_KEY](cn);
+  globalThis[GLOBAL_KEY] = dbInstance;
   return dbInstance;
 }
 

@@ -46,6 +46,36 @@ function IconReportes() {
   );
 }
 
+function IconInicio() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="m3 11 9-7 9 7M5 10v9h5v-5h4v5h5v-9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconIngresoPedido() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="M4 7h16M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 8h8m-8 4h6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconVentas() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
@@ -126,8 +156,34 @@ function IconMarcas() {
   );
 }
 
+function IconAjustePrecio() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="M12 3v18M5 8h10a3 3 0 1 0 0-6H8a3 3 0 1 0 0 6h8a3 3 0 1 1 0 6H6a3 3 0 1 0 0 6h11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const menuItems = [
-  { type: "link", href: "/reportes", label: "Reportes", id: "reportes", icon: IconReportes },
+  { type: "link", href: "/", label: "Inicio", id: "inicio", icon: IconInicio },
+  { type: "link", href: "/ingreso-pedido", label: "Ingreso pedido", id: "ingreso-pedido", icon: IconIngresoPedido },
+  {
+    type: "group",
+    label: "Reportes",
+    id: "reportes",
+    icon: IconReportes,
+    children: [
+      { href: "/reportes/graficos", label: "Gráficos", id: "reportes-graficos" },
+      { href: "/reportes/reportes", label: "Reportes", id: "reportes-lista" },
+    ],
+  },
   {
     type: "group",
     label: "Ventas",
@@ -149,18 +205,20 @@ const menuItems = [
     ],
   },
   { type: "link", href: "/stock", label: "Stock", id: "stock", icon: IconStock },
+  { type: "link", href: "/ajuste-precios", label: "Ajuste precios", id: "ajuste-precios", icon: IconAjustePrecio },
   { type: "link", href: "/marcas", label: "Marcas", id: "marcas", icon: IconMarcas },
   { type: "link", href: "/usuarios", label: "Usuarios", id: "usuarios", icon: IconUsuarios },
 ];
 
 export default function AppSidebar({ active }) {
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState({ ventas: false, devoluciones: false });
+  const [expanded, setExpanded] = useState({ ventas: false, devoluciones: false, reportes: false });
 
   const autoExpanded = useMemo(
     () => ({
       ventas: pathname?.startsWith("/ventas/"),
       devoluciones: pathname?.startsWith("/devolucion/"),
+      reportes: pathname?.startsWith("/reportes/"),
     }),
     [pathname],
   );
