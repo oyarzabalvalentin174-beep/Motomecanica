@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import ModalPagoVenta from "@/components/ModalPagoVenta";
 
 function money(n) {
@@ -55,6 +56,37 @@ function findProductByCodigoBarraExacto(catalogo, code) {
 }
 
 const MIN_BARCODE_LEN = 3;
+const BARCODE_HINTS = new Map();
+BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODABAR,
+  BarcodeFormat.ITF,
+]);
+BARCODE_HINTS.set(DecodeHintType.TRY_HARDER, true);
+
+async function pickBackCameraDeviceId() {
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    tempStream.getTracks().forEach((t) => t.stop());
+  } catch {
+    // Si falla, se manejará en decodeFromVideoDevice.
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoInputs = devices.filter((d) => d.kind === "videoinput");
+  if (videoInputs.length === 0) return undefined;
+
+  const rear = videoInputs.find((d) => /back|rear|environment|trasera/i.test(d.label || ""));
+  return rear?.deviceId || videoInputs[0].deviceId;
+}
 
 export default function VentaClient({ initialProductos = [], listError = null }) {
   const router = useRouter();
@@ -413,10 +445,11 @@ export default function VentaClient({ initialProductos = [], listError = null })
         const video = videoScanRef.current;
         if (!video) return;
 
-        const reader = new BrowserMultiFormatReader();
+        const deviceId = await pickBackCameraDeviceId();
+        const reader = new BrowserMultiFormatReader(BARCODE_HINTS);
 
         const controls = await reader.decodeFromVideoDevice(
-          undefined,
+          deviceId,
           video,
           (result) => {
             if (cancelled) return;

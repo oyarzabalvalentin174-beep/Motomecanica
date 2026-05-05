@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
 const EMPTY_FORM = {
   id_producto: null,
@@ -19,6 +20,37 @@ const EMPTY_FORM = {
 };
 
 const PAGE_SIZE = 10;
+const BARCODE_HINTS = new Map();
+BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODABAR,
+  BarcodeFormat.ITF,
+]);
+BARCODE_HINTS.set(DecodeHintType.TRY_HARDER, true);
+
+async function pickBackCameraDeviceId() {
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    tempStream.getTracks().forEach((t) => t.stop());
+  } catch {
+    // Si falla, se manejará luego al iniciar scanner.
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoInputs = devices.filter((d) => d.kind === "videoinput");
+  if (videoInputs.length === 0) return undefined;
+
+  const rear = videoInputs.find((d) => /back|rear|environment|trasera/i.test(d.label || ""));
+  return rear?.deviceId || videoInputs[0].deviceId;
+}
 
 function EyeIcon() {
   return (
@@ -120,6 +152,7 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const [descProduct, setDescProduct] = useState(null);
   const [formState, setFormState] = useState(EMPTY_FORM);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanTarget, setScanTarget] = useState("form");
   const [scanError, setScanError] = useState(null);
   const [scanReady, setScanReady] = useState(false);
 
@@ -242,7 +275,8 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
     setShowForm(true);
   };
 
-  const abrirCamaraEscaner = useCallback(() => {
+  const abrirCamaraEscaner = useCallback((target = "form") => {
+    setScanTarget(target);
     setScanError(null);
     setScanReady(false);
     setCameraOpen(true);
@@ -251,10 +285,16 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const handleDetectedCode = useCallback((rawCode) => {
     const code = String(rawCode || "").trim();
     if (!code) return;
-    setFormState((prev) => ({ ...prev, codigo_barra: code }));
-    setBanner({ type: "ok", text: `Código leído: ${code}` });
+    if (scanTarget === "search") {
+      setQ(code);
+      setPage(1);
+      setBanner({ type: "ok", text: `Código leído en buscador: ${code}` });
+    } else {
+      setFormState((prev) => ({ ...prev, codigo_barra: code }));
+      setBanner({ type: "ok", text: `Código leído: ${code}` });
+    }
     setCameraOpen(false);
-  }, []);
+  }, [scanTarget]);
 
   useEffect(() => {
     if (!cameraOpen) return undefined;
@@ -281,9 +321,10 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
         const video = videoScanRef.current;
         if (!video) return;
 
-        const reader = new BrowserMultiFormatReader();
+        const deviceId = await pickBackCameraDeviceId();
+        const reader = new BrowserMultiFormatReader(BARCODE_HINTS);
         const controls = await reader.decodeFromVideoDevice(
-          undefined,
+          deviceId,
           video,
           (result) => {
             if (cancelled) return;
@@ -349,6 +390,15 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
               placeholder="Buscar por código, nombre o descripción"
               className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
             />
+            <button
+              type="button"
+              onClick={() => abrirCamaraEscaner("search")}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+              title="Escanear código de barras para buscar"
+              aria-label="Escanear código de barras para buscar"
+            >
+              <span aria-hidden>📷</span>
+            </button>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <select
                 value={marcaFilter}
@@ -452,7 +502,7 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 />
                 <button
                   type="button"
-                  onClick={abrirCamaraEscaner}
+                  onClick={() => abrirCamaraEscaner("form")}
                   className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
                   title="Escanear código de barras con cámara"
                   aria-label="Escanear código de barras con cámara"
@@ -615,7 +665,11 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 <h3 id="modal-scan-stock" className="text-base font-semibold text-zinc-900">
                   Escanear código de barras
                 </h3>
-                <p className="mt-1 text-xs text-zinc-500">Apuntá al código para cargarlo en el campo automáticamente.</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {scanTarget === "search"
+                    ? "Apuntá al código para cargarlo en el buscador."
+                    : "Apuntá al código para cargarlo en el campo automáticamente."}
+                </p>
               </div>
               <button type="button" onClick={() => setCameraOpen(false)} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50">
                 Cerrar
