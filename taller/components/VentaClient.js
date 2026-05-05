@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import ModalPagoVenta from "@/components/ModalPagoVenta";
 
 function money(n) {
@@ -62,8 +63,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const cantidadInputRef = useRef(null);
   const modalesAbiertosRef = useRef({ cantidad: false, pago: false, camara: false });
   const videoScanRef = useRef(null);
-  const scanStreamRef = useRef(null);
-  const scanRafRef = useRef(null);
+  const scanControlsRef = useRef(null);
 
   const catalogo = useMemo(
     () => (Array.isArray(initialProductos) ? initialProductos : []),
@@ -391,18 +391,12 @@ export default function VentaClient({ initialProductos = [], listError = null })
   useEffect(() => {
     if (!cameraOpen) return undefined;
     let cancelled = false;
-    let detector = null;
 
     const cleanup = () => {
-      if (scanRafRef.current) {
-        cancelAnimationFrame(scanRafRef.current);
-        scanRafRef.current = null;
+      if (scanControlsRef.current) {
+        scanControlsRef.current.stop();
+        scanControlsRef.current = null;
       }
-      const stream = scanStreamRef.current;
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
-      scanStreamRef.current = null;
       const v = videoScanRef.current;
       if (v) {
         v.pause();
@@ -410,56 +404,43 @@ export default function VentaClient({ initialProductos = [], listError = null })
       }
     };
 
-    const scanFrame = async () => {
-      if (cancelled) return;
-      const video = videoScanRef.current;
-      if (!video || video.readyState < 2 || !detector) {
-        scanRafRef.current = requestAnimationFrame(scanFrame);
-        return;
-      }
-      try {
-        const codes = await detector.detect(video);
-        if (Array.isArray(codes) && codes.length > 0) {
-          const raw = String(codes[0]?.rawValue ?? "").trim();
-          if (raw) {
-            handleDetectedCode(raw);
-            return;
-          }
-        }
-      } catch {
-        // No cortar loop por fallos intermitentes de detección.
-      }
-      scanRafRef.current = requestAnimationFrame(scanFrame);
-    };
-
     const start = async () => {
       try {
-        if (typeof window === "undefined" || !("BarcodeDetector" in window)) {
-          setScanError("Este navegador no soporta lectura por cámara (BarcodeDetector).");
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          setScanError("Este navegador no permite acceso a cámara.");
           return;
         }
-        detector = new window.BarcodeDetector({
-          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "codabar"],
-        });
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        scanStreamRef.current = stream;
         const video = videoScanRef.current;
         if (!video) return;
-        video.srcObject = stream;
-        await video.play();
+
+        const reader = new BrowserMultiFormatReader();
+
+        const controls = await reader.decodeFromVideoDevice(
+          undefined,
+          video,
+          (result) => {
+            if (cancelled) return;
+            const raw = String(result?.getText?.() ?? "").trim();
+            if (!raw) return;
+            if (navigator?.vibrate) navigator.vibrate(120);
+            handleDetectedCode(raw);
+          },
+        );
+
+        if (cancelled) {
+          controls?.stop?.();
+          return;
+        }
+
+        scanControlsRef.current = controls;
         setScanReady(true);
-        scanRafRef.current = requestAnimationFrame(scanFrame);
       } catch (e) {
-        setScanError(e?.message || "No se pudo abrir la cámara.");
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("permission")) {
+          setScanError("Necesitamos acceso a la cámara para escanear códigos.");
+        } else {
+          setScanError(msg || "No se pudo abrir la cámara.");
+        }
       }
     };
 

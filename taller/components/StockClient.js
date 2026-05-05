@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 
 const EMPTY_FORM = {
   id_producto: null,
@@ -105,6 +106,8 @@ function getStockDotClass(stock, stockMinimo) {
 
 export default function StockClient({ initialRows, marcas = [], sectores = [], listError }) {
   const router = useRouter();
+  const videoScanRef = useRef(null);
+  const scanControlsRef = useRef(null);
   const [isPending, startTransition] = useTransition();
   const [banner, setBanner] = useState(null);
   const [q, setQ] = useState("");
@@ -116,6 +119,9 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const [showForm, setShowForm] = useState(false);
   const [descProduct, setDescProduct] = useState(null);
   const [formState, setFormState] = useState(EMPTY_FORM);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanError, setScanError] = useState(null);
+  const [scanReady, setScanReady] = useState(false);
 
   const marcasOptions = useMemo(
     () =>
@@ -235,6 +241,83 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
     setFormState(toForm(row));
     setShowForm(true);
   };
+
+  const abrirCamaraEscaner = useCallback(() => {
+    setScanError(null);
+    setScanReady(false);
+    setCameraOpen(true);
+  }, []);
+
+  const handleDetectedCode = useCallback((rawCode) => {
+    const code = String(rawCode || "").trim();
+    if (!code) return;
+    setFormState((prev) => ({ ...prev, codigo_barra: code }));
+    setBanner({ type: "ok", text: `Código leído: ${code}` });
+    setCameraOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined;
+    let cancelled = false;
+
+    const cleanup = () => {
+      if (scanControlsRef.current) {
+        scanControlsRef.current.stop();
+        scanControlsRef.current = null;
+      }
+      const v = videoScanRef.current;
+      if (v) {
+        v.pause();
+        v.srcObject = null;
+      }
+    };
+
+    const start = async () => {
+      try {
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          setScanError("Este navegador no permite acceso a cámara.");
+          return;
+        }
+        const video = videoScanRef.current;
+        if (!video) return;
+
+        const reader = new BrowserMultiFormatReader();
+        const controls = await reader.decodeFromVideoDevice(
+          undefined,
+          video,
+          (result) => {
+            if (cancelled) return;
+            const raw = String(result?.getText?.() ?? "").trim();
+            if (!raw) return;
+            if (navigator?.vibrate) navigator.vibrate(120);
+            handleDetectedCode(raw);
+          },
+        );
+
+        if (cancelled) {
+          controls?.stop?.();
+          return;
+        }
+
+        scanControlsRef.current = controls;
+        setScanReady(true);
+      } catch (e) {
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("permission")) {
+          setScanError("Necesitamos acceso a la cámara para escanear códigos.");
+        } else {
+          setScanError(msg || "No se pudo abrir la cámara.");
+        }
+      }
+    };
+
+    start();
+    return () => {
+      cancelled = true;
+      cleanup();
+      setScanReady(false);
+    };
+  }, [cameraOpen, handleDetectedCode]);
 
   const archiveProduct = async (row) => {
     if (!window.confirm(`¿Archivar el producto "${row.nombre}"?`)) return;
@@ -358,7 +441,26 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
       {showForm ? (
         <form onSubmit={onSubmit} className="mt-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-md shadow-zinc-900/5">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Input label="Código barra" name="codigo_barra" value={formState.codigo_barra} onChange={onChange} />
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Código barra</span>
+              <div className="mt-1.5 flex gap-2">
+                <input
+                  name="codigo_barra"
+                  value={formState.codigo_barra}
+                  onChange={onChange}
+                  className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={abrirCamaraEscaner}
+                  className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+                  title="Escanear código de barras con cámara"
+                  aria-label="Escanear código de barras con cámara"
+                >
+                  <span aria-hidden>📷</span>
+                </button>
+              </div>
+            </label>
             <Input label="Código" name="codigo" value={formState.codigo} onChange={onChange} />
             <Input label="Nombre *" name="nombre" value={formState.nombre} onChange={onChange} />
             <Input label="Descripción" name="descripcion" value={formState.descripcion} onChange={onChange} />
@@ -501,6 +603,37 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {cameraOpen ? (
+        <div className="fixed inset-0 z-[72] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="modal-scan-stock">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="modal-scan-stock" className="text-base font-semibold text-zinc-900">
+                  Escanear código de barras
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500">Apuntá al código para cargarlo en el campo automáticamente.</p>
+              </div>
+              <button type="button" onClick={() => setCameraOpen(false)} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50">
+                Cerrar
+              </button>
+            </div>
+
+            <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-black">
+              <video ref={videoScanRef} autoPlay playsInline muted className="h-[280px] w-full object-cover" />
+              {!scanReady && !scanError ? (
+                <div className="absolute inset-0 grid place-items-center bg-black/40 text-sm font-medium text-white">Iniciando cámara...</div>
+              ) : null}
+            </div>
+
+            {scanError ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{scanError}</div>
+            ) : (
+              <p className="mt-3 text-xs text-zinc-500">Si no detecta, mejorá la iluminación o acercá/alejá la cámara.</p>
+            )}
           </div>
         </div>
       ) : null}
