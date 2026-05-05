@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import IngresoPedidoClient from "@/components/IngresoPedidoClient";
 import UserPop from "@/components/UserPop";
 import { exec, query } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ function normalizeArray(raw) {
 }
 
 export default async function IngresoPedidoPage() {
+  await requireSession("/ingreso-pedido");
   let productos = [];
   let marcas = [];
   let sectores = [];

@@ -3,10 +3,12 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import ReportesGraficosClient from "@/components/ReportesGraficosClient";
 import { exec } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportesGraficosPage() {
+  await requireSession("/reportes/graficos");
   let initial12 = null;
   let initial34 = null;
   let initialKpis = null;

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 
 function IconMenu() {
   return (
@@ -189,7 +190,7 @@ export default function UserPop({ loadAlerts }) {
                   type="button"
                   onClick={() => {
                     setProfileMenuOpen(false);
-                    router.push("/usuarios");
+                    router.push("/perfil");
                   }}
                   className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
                 >
@@ -197,9 +198,9 @@ export default function UserPop({ loadAlerts }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setProfileMenuOpen(false);
-                    router.push("/login");
+                    await signOut({ redirect: true, callbackUrl: "/login" });
                   }}
                   className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
                 >

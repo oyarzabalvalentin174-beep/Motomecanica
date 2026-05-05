@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import VentaClient from "@/components/VentaClient";
 import { exec } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ function normalizeArray(raw) {
 }
 
 export default async function VentaPage() {
+  await requireSession("/ventas/venta");
   let productos = [];
   let listError = null;
 

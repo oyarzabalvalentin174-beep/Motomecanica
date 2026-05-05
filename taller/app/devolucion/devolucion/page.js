@@ -3,6 +3,7 @@ import DevolucionClient from "@/components/DevolucionClient";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import { exec, query } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ function normalizeVentas(raw) {
 }
 
 export default async function DevolucionPage() {
+  await requireSession("/devolucion/devolucion");
   let ventas = [];
   let listError = null;
 

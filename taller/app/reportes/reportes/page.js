@@ -1,10 +1,12 @@
 import AppSidebar from "@/components/AppSidebar";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
-export default function ReportesListaPage() {
+export default async function ReportesListaPage() {
+  await requireSession("/reportes/reportes");
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-200/90 via-zinc-100 to-zinc-200/80">
       <GlobalPageLoader />

@@ -155,7 +155,8 @@ function authLog(...args) {
 }
 
 const authOptions = {
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
+  jwt: { maxAge: 8 * 60 * 60 },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   debug: authDebug,
   pages: {

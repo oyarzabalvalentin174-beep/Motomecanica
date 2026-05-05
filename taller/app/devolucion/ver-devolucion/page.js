@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import VerDevolucionesClient from "@/components/VerDevolucionesClient";
 import { exec } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ function rowMatchesQuery(row, termLower) {
 }
 
 export default async function VerDevolucionPage(props) {
+  await requireSession("/devolucion/ver-devolucion");
   const searchParams = await Promise.resolve(props.searchParams);
   const page = Math.max(1, parseInt(String(searchParams?.page || "1"), 10) || 1);
   const query = String(searchParams?.q || "").trim().toLowerCase();

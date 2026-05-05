@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import StockClient from "@/components/StockClient";
 import { exec, query } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ function normalizeArray(raw) {
 }
 
 export default async function StockPage() {
+  await requireSession("/stock");
   let products = [];
   let marcas = [];
   let sectores = [];

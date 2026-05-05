@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import UsuariosClient from "@/components/UsuariosClient";
 import { exec } from "@/components/db";
+import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ function normalizeUsuariosArray(raw) {
 }
 
 export default async function UsuariosPage(props) {
+  await requireSession("/usuarios");
   const searchParams = await Promise.resolve(props.searchParams);
   const page = Math.max(1, parseInt(String(searchParams?.page || "1"), 10) || 1);
 

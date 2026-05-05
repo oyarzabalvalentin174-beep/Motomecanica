@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -14,15 +16,17 @@ export default function LoginPage() {
     event.preventDefault();
     setErrorMessage("");
     setIsSubmitting(true);
+    const callbackUrl = searchParams.get("callbackUrl") || "/";
 
     const res = await signIn("credentials", {
       username: username,
       password: password,
       redirect: false,
+      callbackUrl,
     });
 
     if (res?.ok) {
-      window.location.href = "/";
+      window.location.href = res.url || callbackUrl;
     } else {
       setErrorMessage(res?.error || "No se pudo iniciar sesión");
       setIsSubmitting(false);

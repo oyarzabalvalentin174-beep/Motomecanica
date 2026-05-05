@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
+import { requireSession } from "@/lib/requireSession";
 
 const statusCards = [
   {
@@ -54,7 +55,8 @@ const operationalShortcuts = [
   { label: "Administrar usuarios", href: "/usuarios" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  await requireSession("/");
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-100 via-zinc-50 to-zinc-100">
       <GlobalPageLoader />
