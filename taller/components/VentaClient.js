@@ -63,11 +63,35 @@ BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.UPC_A,
   BarcodeFormat.UPC_E,
   BarcodeFormat.CODE_128,
-  BarcodeFormat.CODE_39,
-  BarcodeFormat.CODABAR,
   BarcodeFormat.ITF,
 ]);
 BARCODE_HINTS.set(DecodeHintType.TRY_HARDER, true);
+
+async function optimizeActiveCameraTrack(videoEl) {
+  try {
+    const stream = videoEl?.srcObject;
+    const track = stream?.getVideoTracks?.()?.[0];
+    if (!track?.getCapabilities || !track?.applyConstraints) return;
+
+    const caps = track.getCapabilities();
+    const advanced = [];
+
+    if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+      advanced.push({ focusMode: "continuous" });
+    }
+    if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes("continuous")) {
+      advanced.push({ exposureMode: "continuous" });
+    }
+    if (typeof caps.zoom?.max === "number" && caps.zoom.max >= 1.2) {
+      advanced.push({ zoom: Math.min(1.4, caps.zoom.max) });
+    }
+    if (advanced.length === 0) return;
+
+    await track.applyConstraints({ advanced });
+  } catch {
+    // Ignorar dispositivos/navegadores que no soportan estas optimizaciones.
+  }
+}
 
 async function pickBackCameraDeviceId() {
   try {
@@ -96,6 +120,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const modalesAbiertosRef = useRef({ cantidad: false, pago: false, camara: false });
   const videoScanRef = useRef(null);
   const scanControlsRef = useRef(null);
+  const lastDetectedRef = useRef({ code: "", at: 0 });
 
   const catalogo = useMemo(
     () => (Array.isArray(initialProductos) ? initialProductos : []),
@@ -417,6 +442,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
     setBanner(null);
     setScanError(null);
     setScanReady(false);
+    lastDetectedRef.current = { code: "", at: 0 };
     setCameraOpen(true);
   }, []);
 
@@ -455,6 +481,10 @@ export default function VentaClient({ initialProductos = [], listError = null })
             if (cancelled) return;
             const raw = String(result?.getText?.() ?? "").trim();
             if (!raw) return;
+            const now = Date.now();
+            const last = lastDetectedRef.current;
+            if (last.code === raw && now - last.at < 900) return;
+            lastDetectedRef.current = { code: raw, at: now };
             if (navigator?.vibrate) navigator.vibrate(120);
             handleDetectedCode(raw);
           },
@@ -466,6 +496,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
         }
 
         scanControlsRef.current = controls;
+        await optimizeActiveCameraTrack(video);
         setScanReady(true);
       } catch (e) {
         const msg = String(e?.message || "");
@@ -745,6 +776,12 @@ export default function VentaClient({ initialProductos = [], listError = null })
 
             <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-black">
               <video ref={videoScanRef} autoPlay playsInline muted className="h-[280px] w-full object-cover" />
+              {scanReady && !scanError ? (
+                <>
+                  <div className="pointer-events-none absolute inset-x-[8%] top-1/2 -translate-y-1/2 border-t-2 border-red-500/90 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                  <div className="pointer-events-none absolute inset-x-[8%] top-[calc(50%-16px)] h-8 rounded-md border border-red-500/35" />
+                </>
+              ) : null}
               {!scanReady && !scanError ? (
                 <div className="absolute inset-0 grid place-items-center bg-black/40 text-sm font-medium text-white">
                   Iniciando cámara...
