@@ -29,7 +29,7 @@ function LoaderCycle() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-b from-zinc-50 via-white to-zinc-100/80">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-b from-zinc-50 via-white to-zinc-100/80 print:hidden">
       <div className="flex flex-col items-center gap-6">
         <div className="relative flex h-52 w-52 items-center justify-center">
           <LoadingSpinnerRings gradientId={ringGradientId} />

@@ -1,7 +1,7 @@
 /** Datos del taller para el comprobante (configurá con variables NEXT_PUBLIC_* en .env.local). */
 export function getTallerComprobanteConfig() {
   return {
-    nombre: process.env.NEXT_PUBLIC_TALLER_NOMBRE || "Motomecanica Oyarzabal",
+    nombre: process.env.NEXT_PUBLIC_TALLER_NOMBRE || "Motomecánica Oyarzabal",
     direccion: process.env.NEXT_PUBLIC_TALLER_DIRECCION || "",
     telefono: process.env.NEXT_PUBLIC_TALLER_TELEFONO || "",
     alias: process.env.NEXT_PUBLIC_TALLER_ALIAS || "oyarzabal.moto",

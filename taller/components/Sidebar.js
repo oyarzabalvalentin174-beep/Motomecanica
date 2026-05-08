@@ -119,11 +119,11 @@ export default function Sidebar({ anchor = "left", width = "320px", children }) 
           type="button"
           aria-label="Cerrar menú lateral"
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-[1200] bg-zinc-900/35 backdrop-blur-[3px]"
+          className="fixed inset-0 z-[1200] bg-zinc-900/35 backdrop-blur-[3px] print:hidden"
         />
       ) : null}
 
-      <aside style={panelStyles} aria-hidden={!isOpen}>
+      <aside className="print:hidden" style={panelStyles} aria-hidden={!isOpen}>
         {children}
       </aside>
     </>

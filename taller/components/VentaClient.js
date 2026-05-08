@@ -55,6 +55,54 @@ function findProductByCodigoBarraExacto(catalogo, code) {
   return catalogo.find((p) => String(p.codigo_barra ?? "").trim() === c) ?? null;
 }
 
+/** Misma decisión que addOrMergeLine: si se puede aplicar el delta sin error de stock. */
+function willAddOrMergeSucceed(product, delta, prevLines) {
+  const id = Number(product?.id_producto);
+  if (!Number.isFinite(id) || id <= 0) return false;
+  const stock = Number(product?.stock ?? 0);
+  if (stock < 1) return false;
+
+  const prev = Array.isArray(prevLines) ? prevLines : [];
+  const idx = prev.findIndex((l) => l.id_producto === id);
+  if (idx === -1) {
+    const cant = Math.min(Math.max(1, delta), stock);
+    return cant >= 1;
+  }
+  const line = prev[idx];
+  const nextQty = line.cantidad + delta;
+  if (nextQty < 1) return true;
+  return nextQty <= line.stock;
+}
+
+let scanSuccessAudioCtx;
+
+function playScanSuccessSound() {
+  if (typeof window === "undefined") return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    scanSuccessAudioCtx = scanSuccessAudioCtx || new AC();
+    const ctx = scanSuccessAudioCtx;
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.07);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.1, t0 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.14);
+  } catch {
+    // Navegador sin audio o política de autoplay.
+  }
+}
+
 const MIN_BARCODE_LEN = 3;
 const BARCODE_HINTS = new Map();
 BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -130,13 +178,16 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const catalogoRef = useRef(catalogo);
   catalogoRef.current = catalogo;
 
+  const [cart, setCart] = useState([]);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+
   const [q, setQ] = useState("");
   const [resultados, setResultados] = useState([]);
   const [banner, setBanner] = useState(null);
   const setBannerRef = useRef(setBanner);
   setBannerRef.current = setBanner;
 
-  const [cart, setCart] = useState([]);
   const [modalPagoOpen, setModalPagoOpen] = useState(false);
   const [cantidadModal, setCantidadModal] = useState(null);
   const [cantidadInput, setCantidadInput] = useState("1");
@@ -266,6 +317,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
 
         const p = findProductByCodigoBarraExacto(catalogoRef.current, code);
         if (p) {
+          if (willAddOrMergeSucceed(p, 1, cartRef.current)) playScanSuccessSound();
           setBannerRef.current(null);
           addOrMergeLineRef.current(p, 1);
         } else {
@@ -424,6 +476,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
       if (code.length < MIN_BARCODE_LEN) return;
       const p = findProductByCodigoBarraExacto(catalogoRef.current, code);
       if (p) {
+        if (willAddOrMergeSucceed(p, 1, cartRef.current)) playScanSuccessSound();
         setBanner({ type: "ok", text: `Código leído: ${code}. Producto agregado.` });
         addOrMergeLine(p, 1);
         setQ("");
@@ -519,18 +572,18 @@ export default function VentaClient({ initialProductos = [], listError = null })
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">Nueva venta</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 sm:text-4xl">Nueva venta</h1>
       </header>
 
       {listError ? (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-base font-medium text-amber-950">
           No se cargó el catálogo: {listError}
         </div>
       ) : null}
 
       {banner ? (
         <div
-          className={`mb-6 rounded-xl border px-4 py-3 text-sm font-medium ${
+          className={`mb-6 rounded-xl border px-4 py-3 text-base font-medium ${
             banner.type === "ok"
               ? "border-emerald-200 bg-emerald-50 text-emerald-900"
               : "border-red-200 bg-red-50 text-red-900"
@@ -543,7 +596,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
       <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
         <section className="space-y-4">
           <div className="rounded-2xl border border-zinc-200/80 bg-white/90 p-5 shadow-sm ring-1 ring-zinc-100">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <label className="block text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Buscar producto o código de barras
             </label>
             <div className="mt-2 flex gap-2">
@@ -557,13 +610,13 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 onKeyDown={onBuscadorKeyDown}
                 data-no-global-barcode
                 placeholder="Nombre, código interno o lector de barras…"
-                className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-2.5 text-[15px] text-zinc-900 outline-none ring-0 transition focus:border-red-400 focus:bg-white focus:ring-2 focus:ring-red-500/20"
+                className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-2.5 text-base text-zinc-900 outline-none ring-0 transition focus:border-red-400 focus:bg-white focus:ring-2 focus:ring-red-500/20"
               />
               <button
                 type="button"
                 onClick={abrirCamaraEscaner}
                 disabled={catalogo.length === 0}
-                className="shrink-0 rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
+                className="shrink-0 rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-base font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
                 title="Escanear código de barras con cámara"
                 aria-label="Escanear código de barras con cámara"
               >
@@ -573,12 +626,12 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 type="button"
                 onClick={() => onBuscarClick()}
                 disabled={catalogo.length === 0}
-                className="shrink-0 rounded-xl bg-gradient-to-r from-red-700 to-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-red-600 hover:to-red-500 disabled:opacity-60"
+                className="shrink-0 rounded-xl bg-gradient-to-r from-red-700 to-red-600 px-4 py-2.5 text-base font-semibold text-white shadow-sm transition hover:from-red-600 hover:to-red-500 disabled:opacity-60"
               >
                 Buscar
               </button>
             </div>
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-2 text-sm leading-relaxed text-zinc-500">
               El lector funciona en toda esta pantalla (no hace falta el buscador): escaneá y al terminar se agrega 1
               unidad si el código existe. En el buscador, Enter sigue buscando como antes.
             </p>
@@ -586,11 +639,11 @@ export default function VentaClient({ initialProductos = [], listError = null })
 
           <div className="rounded-2xl border border-zinc-200/80 bg-white/90 shadow-sm ring-1 ring-zinc-100">
             <div className="border-b border-zinc-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-zinc-800">Resultados</h2>
+              <h2 className="text-base font-semibold text-zinc-800">Resultados</h2>
             </div>
             <ul className="max-h-[min(420px,50vh)] divide-y divide-zinc-100 overflow-y-auto">
               {resultados.length === 0 ? (
-                <li className="px-5 py-8 text-center text-sm text-zinc-500">
+                <li className="px-5 py-8 text-center text-base text-zinc-500">
                   {catalogo.length === 0
                     ? listError
                       ? "Sin catálogo. Revisá la conexión o recargá la página."
@@ -604,8 +657,8 @@ export default function VentaClient({ initialProductos = [], listError = null })
                     className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-50/80"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-zinc-900">{p.nombre}</p>
-                      <p className="text-xs text-zinc-500">
+                      <p className="truncate text-base font-medium text-zinc-900">{p.nombre}</p>
+                      <p className="text-sm text-zinc-500">
                         {p.codigo_barra ? `CB ${p.codigo_barra}` : "Sin código de barras"}
                         {p.codigo ? ` · ${p.codigo}` : ""} · Stock {p.stock} · ${money(p.precio_venta)}
                       </p>
@@ -613,7 +666,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
                     <button
                       type="button"
                       onClick={() => abrirCantidadParaProducto(p)}
-                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
+                      className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
                     >
                       Agregar
                     </button>
@@ -626,7 +679,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
 
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <div className="flex min-h-[min(520px,78vh)] flex-col rounded-2xl border border-zinc-200/80 bg-white/95 p-5 shadow-md ring-1 ring-zinc-100">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Carrito</h2>
+            <h2 className="text-base font-semibold uppercase tracking-wide text-zinc-500">Carrito</h2>
             {cart.length === 0 ? (
               <p className="mt-4 flex-1 text-base text-zinc-500">Vacío. Escaná o agregá desde resultados.</p>
             ) : (
@@ -637,20 +690,20 @@ export default function VentaClient({ initialProductos = [], listError = null })
                     className="rounded-xl border border-zinc-200 bg-zinc-50/80 p-4 text-base shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 flex-1 text-[17px] font-semibold leading-snug text-zinc-900">
+                      <p className="min-w-0 flex-1 text-lg font-semibold leading-snug text-zinc-900 sm:text-xl">
                         {line.nombre}
                       </p>
                       <button
                         type="button"
                         onClick={() => removeLine(line.id_producto)}
-                        className="shrink-0 text-sm font-semibold text-red-600 hover:text-red-700"
+                        className="shrink-0 text-base font-semibold text-red-600 hover:text-red-700"
                       >
                         Quitar
                       </button>
                     </div>
                     <div className="mt-3 flex flex-wrap items-end gap-4">
                       <div data-no-global-barcode className="min-w-[120px] flex-1">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        <label className="block text-sm font-semibold uppercase tracking-wide text-zinc-500">
                           Cantidad (máx. {line.stock})
                         </label>
                         <input
@@ -663,7 +716,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
                         />
                       </div>
                       <div className="min-w-[100px]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Precio unit.</p>
+                        <p className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Precio unit.</p>
                         <p className="mt-1 text-xl font-bold tabular-nums text-zinc-900">{money(line.precio_unitario)}</p>
                       </div>
                     </div>
@@ -684,7 +737,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 type="button"
                 onClick={abrirModalPago}
                 disabled={cart.length === 0}
-                className="w-full rounded-xl bg-gradient-to-r from-emerald-700 to-emerald-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-emerald-500 disabled:opacity-50"
+                className="w-full rounded-xl bg-gradient-to-r from-emerald-700 to-emerald-600 py-3.5 text-base font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-emerald-500 disabled:opacity-50"
               >
                 Confirmar venta
               </button>
@@ -705,11 +758,11 @@ export default function VentaClient({ initialProductos = [], listError = null })
             <h3 id="modal-cantidad-titulo" className="text-base font-semibold text-zinc-900">
               Cantidad
             </h3>
-            <p className="mt-1 truncate text-sm text-zinc-600" title={cantidadModal.nombre}>
+            <p className="mt-1 truncate text-base text-zinc-600" title={cantidadModal.nombre}>
               {cantidadModal.nombre}
             </p>
-            <p className="mt-1 text-xs text-zinc-500">Stock disponible: {cantidadModal.stock}</p>
-            <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <p className="mt-1 text-sm text-zinc-500">Stock disponible: {cantidadModal.stock}</p>
+            <label className="mt-4 block text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Unidades a agregar
               <input
                 ref={cantidadInputRef}
@@ -724,20 +777,20 @@ export default function VentaClient({ initialProductos = [], listError = null })
                     confirmarCantidadModal();
                   }
                 }}
-                className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-[15px] text-zinc-900"
+                className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-base text-zinc-900"
               />
             </label>
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
-                className="flex-1 rounded-xl border border-zinc-300 bg-zinc-50 py-2.5 text-sm font-semibold text-zinc-800 hover:bg-zinc-100"
+                className="flex-1 rounded-xl border border-zinc-300 bg-zinc-50 py-2.5 text-base font-semibold text-zinc-800 hover:bg-zinc-100"
                 onClick={() => setCantidadModal(null)}
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-xl bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
+                className="flex-1 rounded-xl bg-zinc-900 py-2.5 text-base font-semibold text-white hover:bg-zinc-800"
                 onClick={confirmarCantidadModal}
               >
                 Agregar al carrito
@@ -761,14 +814,14 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 <h3 id="modal-scan-camara" className="text-base font-semibold text-zinc-900">
                   Escanear código con cámara
                 </h3>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-sm text-zinc-500">
                   Apuntá al código de barras. Se agrega automáticamente al detectar.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setCameraOpen(false)}
-                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
               >
                 Cerrar
               </button>
@@ -783,18 +836,18 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 </>
               ) : null}
               {!scanReady && !scanError ? (
-                <div className="absolute inset-0 grid place-items-center bg-black/40 text-sm font-medium text-white">
+                <div className="absolute inset-0 grid place-items-center bg-black/40 text-base font-medium text-white">
                   Iniciando cámara...
                 </div>
               ) : null}
             </div>
 
             {scanError ? (
-              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-base text-red-900">
                 {scanError}
               </div>
             ) : (
-              <p className="mt-3 text-xs text-zinc-500">
+              <p className="mt-3 text-sm leading-relaxed text-zinc-500">
                 Si no detecta, acercá o alejás el celular/cámara y mejorá la iluminación.
               </p>
             )}

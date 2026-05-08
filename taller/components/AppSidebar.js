@@ -156,6 +156,48 @@ function IconMarcas() {
   );
 }
 
+function IconFichaTecnica() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="M9 3h6l4 4v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 12h6M9 16h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconPresupuestos() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v6h6M8 13h8M8 17h6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function IconAjustePrecio() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
@@ -207,6 +249,8 @@ const menuItems = [
   { type: "link", href: "/stock", label: "Stock", id: "stock", icon: IconStock },
   { type: "link", href: "/ajuste-precios", label: "Ajuste precios", id: "ajuste-precios", icon: IconAjustePrecio },
   { type: "link", href: "/marcas", label: "Marcas", id: "marcas", icon: IconMarcas },
+  { type: "link", href: "/ficha-tecnica", label: "Ficha técnica", id: "ficha-tecnica", icon: IconFichaTecnica },
+  { type: "link", href: "/presupuestos", label: "Presupuestos", id: "presupuestos", icon: IconPresupuestos },
   { type: "link", href: "/usuarios", label: "Usuarios", id: "usuarios", icon: IconUsuarios },
 ];
 

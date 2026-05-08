@@ -123,7 +123,7 @@ export default function UserPop({ loadAlerts }) {
   };
 
   return (
-    <header className="fixed inset-x-0 top-0 z-[1000] border-b border-zinc-600/40 bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800 shadow-[inset_0_-1px_0_0_rgba(220,38,38,0.28),inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
+    <header className="fixed inset-x-0 top-0 z-[1000] print:hidden border-b border-zinc-600/40 bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800 shadow-[inset_0_-1px_0_0_rgba(220,38,38,0.28),inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
         <div className="flex items-center gap-3">
           <button
