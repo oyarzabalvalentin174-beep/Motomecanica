@@ -35,3 +35,43 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Impresión: solo la hoja marcada (resto del layout queda oculto) */
+@media print {
+  @page {
+    /* Margen inferior un poco mayor para alejar el contenido del pie que agrega el navegador (URL, título). Eso solo se puede desactivar del todo en el diálogo de impresión: desmarcar «Encabezados y pies de página». */
+    margin: 12mm 12mm 22mm 12mm;
+    size: a4;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #ficha-tecnica-print-area,
+  #ficha-tecnica-print-area *,
+  #presupuesto-print-area,
+  #presupuesto-print-area * {
+    visibility: visible;
+  }
+
+  #ficha-tecnica-print-area,
+  #presupuesto-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none !important;
+    border: none !important;
+    background: #fff !important;
+  }
+}

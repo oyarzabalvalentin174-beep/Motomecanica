@@ -45,6 +45,9 @@ export default function FichaTecnicaClient({
   const selectedMoto = useMemo(() => motos.find((m) => m.id === selectedId) ?? null, [motos, selectedId]);
 
   const [rows, setRows] = useState([]);
+  /** Con moto elegida: por defecto se muestra la hoja (lectura); la edición es aparte. */
+  const [editMode, setEditMode] = useState(false);
+  const [emitidoTexto, setEmitidoTexto] = useState("");
 
   useEffect(() => {
     const base = Array.isArray(initialLineas) ? initialLineas : [];
@@ -59,6 +62,23 @@ export default function FichaTecnicaClient({
       })),
     );
   }, [initialLineas, selectedId]);
+
+  useEffect(() => {
+    setEditMode(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setEmitidoTexto("");
+      return;
+    }
+    setEmitidoTexto(
+      new Intl.DateTimeFormat("es-AR", {
+        dateStyle: "long",
+        timeStyle: "short",
+      }).format(new Date()),
+    );
+  }, [selectedId]);
 
   const refresh = useCallback(() => {
     startTransition(() => router.refresh());
@@ -239,12 +259,29 @@ export default function FichaTecnicaClient({
   const notesCell =
     "min-h-[5rem] max-h-56 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-base leading-relaxed text-zinc-900 shadow-sm outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/15";
 
+  const lineasImpresion = useMemo(
+    () =>
+      rows
+        .map((row) => ({
+          parametro: String(row.parametro ?? "").trim(),
+          valor: String(row.valor ?? "").trim(),
+          notas: String(row.notas ?? "").trim(),
+        }))
+        .filter((r) => r.parametro || r.valor || r.notas),
+    [rows],
+  );
+
+  const imprimirHoja = () => {
+    if (!selectedMoto) return;
+    window.print();
+  };
+
   return (
     <div className="mx-auto w-full max-w-screen-2xl px-3 pb-8 pt-1 sm:px-5 lg:px-6">
       <header className="border-b border-zinc-200/90 pb-3">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">Ficha técnica</h1>
         <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-zinc-600 sm:text-base">
-          Motos y parámetros técnicos por unidad.
+          Elegí una moto para ver la ficha como hoja e imprimirla; la edición de parámetros está en un paso aparte.
         </p>
       </header>
 
@@ -299,10 +336,12 @@ export default function FichaTecnicaClient({
               ) : null}
             </div>
             {!selectedMoto ? (
-              <p className="mt-2 text-sm text-zinc-500 sm:text-base">Elegí una moto para cargar la tabla de abajo.</p>
+              <p className="mt-2 text-sm text-zinc-500 sm:text-base">Elegí una moto para ver la ficha e imprimirla.</p>
             ) : (
               <p className="mt-auto pt-2 text-sm leading-snug text-zinc-400">
-                Guardá con cada fila o con «Guardar todo».
+                {editMode
+                  ? "Estás editando parámetros. Volvé a la hoja cuando quieras ver o imprimir."
+                  : "Vista hoja: imprimí o pasá a editar para cargar o cambiar datos."}
               </p>
             )}
           </div>
@@ -355,131 +394,222 @@ export default function FichaTecnicaClient({
           </form>
         </div>
 
-        {/* Parámetros — ancho completo, densidad para muchas filas */}
-        <section className="flex max-h-[calc(100vh-9.5rem)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm ring-1 ring-zinc-100 sm:max-h-[calc(100vh-8.5rem)] sm:rounded-2xl">
-          <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-200 bg-gradient-to-b from-zinc-50 to-zinc-50/90 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-600 sm:text-base">Parámetros de la ficha</h2>
-              <p className="mt-0.5 hidden text-sm text-zinc-500 sm:block sm:text-base">
-                Una fila por dato · Notas amplias · Columna «Notas» usa el espacio principal
-              </p>
+        {/* Hoja imprimible (lectura) — mismo bloque se usa al imprimir desde edición (hidden en pantalla) */}
+        {selectedMoto ? (
+          <section
+            id="ficha-tecnica-print-area"
+            className={`mx-auto w-full max-w-3xl rounded-2xl border border-zinc-300/90 bg-white px-5 py-6 shadow-md ring-1 ring-zinc-100 sm:px-8 sm:py-8 ${editMode ? "hidden print:block" : ""}`}
+          >
+            <div className="border-b border-zinc-200 pb-4 text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Ficha técnica</p>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+                {selectedMoto.marca} {selectedMoto.modelo}
+              </h2>
+              {selectedMoto.anio != null && Number.isFinite(selectedMoto.anio) ? (
+                <p className="mt-1 text-base text-zinc-600">Año {selectedMoto.anio}</p>
+              ) : null}
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={agregarLinea}
-                disabled={!selectedId}
-                className="min-h-11 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-base font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
-              >
-                + Parámetro
-              </button>
-              <button
-                type="button"
-                onClick={guardarTodas}
-                disabled={!selectedId || rows.length === 0}
-                className="min-h-11 rounded-lg bg-gradient-to-r from-emerald-700 to-emerald-600 px-4 py-2 text-base font-semibold text-white shadow-sm hover:from-emerald-600 hover:to-emerald-500 disabled:opacity-50"
-              >
-                Guardar todo
-              </button>
-            </div>
-          </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {!selectedId ? (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-                <p className="max-w-sm text-base text-zinc-500">
-                  Elegí una moto arriba para cargar y editar los parámetros de esa unidad.
-                </p>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
+              <p className="text-sm text-zinc-500">Documento generado desde el sistema.</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={imprimirHoja}
+                  className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-base font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+                >
+                  Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditMode(true);
+                    setBanner(null);
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-red-700 to-red-600 px-4 py-2.5 text-base font-semibold text-white shadow-sm transition hover:from-red-600 hover:to-red-500"
+                >
+                  Editar ficha
+                </button>
               </div>
-            ) : rows.length === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-                <p className="max-w-sm text-base text-zinc-500">
-                  Todavía no hay filas. Usá «+ Parámetro» para sumar aceites, torque, etc.
+            </div>
+
+            <div className="mt-6 print:mt-4">
+              {lineasImpresion.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/80 px-4 py-8 text-center text-base text-zinc-600">
+                  No hay parámetros cargados todavía. Usá «Editar ficha» para agregar aceites, torque, medidas, etc.
                 </p>
-              </div>
-            ) : (
-              <div className="min-h-0 flex-1 overflow-auto">
-                <table className="w-full table-fixed border-collapse text-left">
-                  <colgroup>
-                    <col style={{ width: "2.75rem" }} />
-                    <col style={{ width: "16%" }} />
-                    <col style={{ width: "13%" }} />
-                    <col style={{ width: "46%" }} />
-                    <col style={{ width: "18%" }} />
-                  </colgroup>
-                  <thead className="sticky top-0 z-10 border-b border-zinc-200 bg-zinc-100/98 shadow-[0_1px_0_0_rgba(0,0,0,0.06)] backdrop-blur-sm">
-                    <tr className="text-sm font-semibold uppercase tracking-wide text-zinc-600 sm:text-base">
-                      <th className="px-1 py-2.5 text-center font-medium text-zinc-500">#</th>
-                      <th className="px-1.5 py-2 pl-1">Parámetro</th>
-                      <th className="px-1.5 py-2">Valor</th>
-                      <th className="px-1.5 py-2">Notas</th>
-                      <th className="px-1.5 py-2 pr-2 text-center">Acciones</th>
+              ) : (
+                <table className="w-full border-collapse text-left text-base">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-800 text-sm font-bold uppercase tracking-wide text-zinc-800">
+                      <th className="w-10 py-2 pr-2 text-center">#</th>
+                      <th className="py-2 pr-3 sm:w-[28%]">Parámetro</th>
+                      <th className="py-2 pr-3 sm:w-[22%]">Valor</th>
+                      <th className="py-2">Notas</th>
                     </tr>
                   </thead>
-                  <tbody className="text-base">
-                    {rows.map((row, idx) => (
-                      <tr
-                        key={row.key}
-                        className={`border-b border-zinc-100 align-top ${idx % 2 === 1 ? "bg-zinc-50/70" : "bg-white"}`}
-                      >
-                        <td className="px-1 py-1.5 text-center align-top">
-                          <span className="inline-flex min-h-10 min-w-9 items-center justify-center rounded-md bg-zinc-100/90 text-sm font-bold tabular-nums text-zinc-600">
-                            {idx + 1}
-                          </span>
-                        </td>
-                        <td className="px-1.5 py-1.5 align-top">
-                          <input
-                            value={row.parametro}
-                            onChange={(e) => actualizarCampo(row.key, "parametro", e.target.value)}
-                            maxLength={100}
-                            className={inputCell}
-                            placeholder="Parámetro"
-                          />
-                        </td>
-                        <td className="px-1.5 py-1.5 align-top">
-                          <input
-                            value={row.valor}
-                            onChange={(e) => actualizarCampo(row.key, "valor", e.target.value)}
-                            maxLength={255}
-                            className={inputCell}
-                            placeholder="Valor"
-                          />
-                        </td>
-                        <td className="px-1.5 py-1.5 align-top">
-                          <textarea
-                            value={row.notas}
-                            onChange={(e) => actualizarCampo(row.key, "notas", e.target.value)}
-                            rows={2}
-                            className={notesCell}
-                            placeholder="Referencias, códigos, medidas…"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5 pr-2 align-top">
-                          <div className="flex min-w-[7.5rem] flex-col gap-2">
-                            <button
-                              type="button"
-                              onClick={() => guardarLinea(row)}
-                              className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-zinc-900 px-3 py-2.5 text-base font-semibold text-white shadow-sm transition hover:bg-zinc-800"
-                            >
-                              Guardar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => eliminarLinea(row)}
-                              className="inline-flex min-h-12 w-full items-center justify-center rounded-lg border-2 border-red-200 bg-red-50/90 px-3 py-2.5 text-base font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
-                            >
-                              Quitar
-                            </button>
-                          </div>
-                        </td>
+                  <tbody>
+                    {lineasImpresion.map((linea, idx) => (
+                      <tr key={`${linea.parametro}-${idx}`} className="border-b border-zinc-200 align-top">
+                        <td className="py-2.5 pr-2 text-center tabular-nums text-zinc-500">{idx + 1}</td>
+                        <td className="py-2.5 pr-3 font-medium text-zinc-900">{linea.parametro || "—"}</td>
+                        <td className="py-2.5 pr-3 text-zinc-800">{linea.valor || "—"}</td>
+                        <td className="py-2.5 whitespace-pre-wrap text-zinc-700">{linea.notas || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+
+            <p className="mt-8 border-t border-zinc-200 pt-3 text-center text-xs text-zinc-400 print:mt-6">
+              Emitido el {emitidoTexto || "—"}
+            </p>
+          </section>
+        ) : null}
+
+        {/* Edición de parámetros */}
+        {selectedMoto && editMode ? (
+          <section className="flex max-h-[calc(100vh-9.5rem)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm ring-1 ring-zinc-100 sm:max-h-[calc(100vh-8.5rem)] sm:rounded-2xl">
+            <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-200 bg-gradient-to-b from-zinc-50 to-zinc-50/90 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-600 sm:text-base">Editar parámetros</h2>
+                <p className="mt-0.5 hidden text-sm text-zinc-500 sm:block sm:text-base">
+                  {selectedMoto.marca} {selectedMoto.modelo}
+                  {selectedMoto.anio != null && Number.isFinite(selectedMoto.anio) ? ` · ${selectedMoto.anio}` : ""}
+                </p>
               </div>
-            )}
-          </div>
-        </section>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-base font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50"
+                >
+                  Ver hoja
+                </button>
+                <button
+                  type="button"
+                  onClick={imprimirHoja}
+                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-base font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50"
+                >
+                  Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={agregarLinea}
+                  disabled={!selectedId}
+                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-base font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  + Parámetro
+                </button>
+                <button
+                  type="button"
+                  onClick={guardarTodas}
+                  disabled={!selectedId || rows.length === 0}
+                  className="min-h-11 rounded-lg bg-gradient-to-r from-emerald-700 to-emerald-600 px-4 py-2 text-base font-semibold text-white shadow-sm hover:from-emerald-600 hover:to-emerald-500 disabled:opacity-50"
+                >
+                  Guardar todo
+                </button>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {rows.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+                  <p className="max-w-sm text-base text-zinc-500">
+                    Todavía no hay filas. Usá «+ Parámetro» para sumar aceites, torque, etc.
+                  </p>
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <table className="w-full table-fixed border-collapse text-left">
+                    <colgroup>
+                      <col style={{ width: "2.75rem" }} />
+                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "13%" }} />
+                      <col style={{ width: "46%" }} />
+                      <col style={{ width: "18%" }} />
+                    </colgroup>
+                    <thead className="sticky top-0 z-10 border-b border-zinc-200 bg-zinc-100/98 shadow-[0_1px_0_0_rgba(0,0,0,0.06)] backdrop-blur-sm">
+                      <tr className="text-sm font-semibold uppercase tracking-wide text-zinc-600 sm:text-base">
+                        <th className="px-1 py-2.5 text-center font-medium text-zinc-500">#</th>
+                        <th className="px-1.5 py-2 pl-1">Parámetro</th>
+                        <th className="px-1.5 py-2">Valor</th>
+                        <th className="px-1.5 py-2">Notas</th>
+                        <th className="px-1.5 py-2 pr-2 text-center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-base">
+                      {rows.map((row, idx) => (
+                        <tr
+                          key={row.key}
+                          className={`border-b border-zinc-100 align-top ${idx % 2 === 1 ? "bg-zinc-50/70" : "bg-white"}`}
+                        >
+                          <td className="px-1 py-1.5 text-center align-top">
+                            <span className="inline-flex min-h-10 min-w-9 items-center justify-center rounded-md bg-zinc-100/90 text-sm font-bold tabular-nums text-zinc-600">
+                              {idx + 1}
+                            </span>
+                          </td>
+                          <td className="px-1.5 py-1.5 align-top">
+                            <input
+                              value={row.parametro}
+                              onChange={(e) => actualizarCampo(row.key, "parametro", e.target.value)}
+                              maxLength={100}
+                              className={inputCell}
+                              placeholder="Parámetro"
+                            />
+                          </td>
+                          <td className="px-1.5 py-1.5 align-top">
+                            <input
+                              value={row.valor}
+                              onChange={(e) => actualizarCampo(row.key, "valor", e.target.value)}
+                              maxLength={255}
+                              className={inputCell}
+                              placeholder="Valor"
+                            />
+                          </td>
+                          <td className="px-1.5 py-1.5 align-top">
+                            <textarea
+                              value={row.notas}
+                              onChange={(e) => actualizarCampo(row.key, "notas", e.target.value)}
+                              rows={2}
+                              className={notesCell}
+                              placeholder="Referencias, códigos, medidas…"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 pr-2 align-top">
+                            <div className="flex min-w-[7.5rem] flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => guardarLinea(row)}
+                                className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-zinc-900 px-3 py-2.5 text-base font-semibold text-white shadow-sm transition hover:bg-zinc-800"
+                              >
+                                Guardar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => eliminarLinea(row)}
+                                className="inline-flex min-h-12 w-full items-center justify-center rounded-lg border-2 border-red-200 bg-red-50/90 px-3 py-2.5 text-base font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
+                              >
+                                Quitar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        ) : !selectedMoto ? (
+          <section className="rounded-xl border border-dashed border-zinc-300/90 bg-zinc-50/50 px-6 py-14 text-center sm:rounded-2xl sm:py-16">
+            <p className="mx-auto max-w-md text-base text-zinc-600">
+              Elegí una moto arriba para ver la ficha técnica en formato hoja y poder imprimirla.
+            </p>
+          </section>
+        ) : null}
       </div>
     </div>
   );
