@@ -12,13 +12,16 @@
   "dependencies": {
     "@zxing/browser": "^0.2.0",
     "bcryptjs": "^3.0.3",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
     "next": "16.1.6",
     "next-auth": "^4.24.14",
     "pg-promise": "^12.6.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.1",
-    "taller-root-runner": "file:.."
+    "taller-root-runner": "file:..",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

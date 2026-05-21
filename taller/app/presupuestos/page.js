@@ -3,16 +3,10 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import PresupuestosClient from "@/components/PresupuestosClient";
 import { exec } from "@/components/db";
+import { normalizeSpList, unwrapSpEntity } from "@/lib/execHelpers";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
-
-function normalizeList(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  if (Array.isArray(raw?.data)) return raw.data;
-  return [];
-}
 
 export default async function PresupuestosPage(props) {
   await requireSession("/presupuestos");
@@ -25,11 +19,11 @@ export default async function PresupuestosPage(props) {
   let listError = null;
 
   try {
-    const rawList = await exec("spgetpresupuestos");
+    const rawList = await exec("spgetpresupuestos", {});
     if (rawList?.status === "error") {
       listError = rawList.message || "No se pudieron cargar los presupuestos";
     } else {
-      lista = normalizeList(rawList);
+      lista = normalizeSpList(rawList);
     }
   } catch (e) {
     listError = e?.message || "No se pudieron cargar los presupuestos";
@@ -40,8 +34,8 @@ export default async function PresupuestosPage(props) {
       const rawD = await exec("spgetpresupuesto", { presupuesto_id: selectedId });
       if (rawD?.status === "error") {
         listError = rawD.message || "No se pudo cargar el presupuesto";
-      } else if (rawD?.data && typeof rawD.data === "object") {
-        detail = rawD.data;
+      } else {
+        detail = unwrapSpEntity(rawD, ["id", "nombre_persona", "lineas"]);
       }
     } catch (e) {
       listError = e?.message || "No se pudo cargar el presupuesto";

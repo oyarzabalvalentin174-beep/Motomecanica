@@ -2,61 +2,54 @@ import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
+import { formatFechaAr, loadHomeMetricas, moneyEs } from "@/lib/homeMetricas";
 import { requireSession } from "@/lib/requireSession";
-
-const statusCards = [
-  {
-    title: "Ordenes en curso",
-    value: "24",
-    detail: "6 para entregar hoy",
-  },
-  {
-    title: "Turnos confirmados",
-    value: "14",
-    detail: "3 sin repuestos asignados",
-  },
-  {
-    title: "Stock critico",
-    value: "8",
-    detail: "Items con menos de 2 unidades",
-  },
-  {
-    title: "Alertas urgentes",
-    value: "3",
-    detail: "Requieren validacion manual",
-  },
-];
-
-const priorities = [
-  {
-    title: "Revisar devoluciones pendientes",
-    description: "Hay 2 devoluciones abiertas hace mas de 48 horas.",
-    href: "/devolucion/ver-devolucion",
-    label: "Alta",
-  },
-  {
-    title: "Validar compras para stock critico",
-    description: "Pastillas de freno y filtro de aceite en minimo.",
-    href: "/stock",
-    label: "Media",
-  },
-  {
-    title: "Control de caja de cierre",
-    description: "Falta registrar 1 comprobante del turno tarde.",
-    href: "/ventas/ver-ventas",
-    label: "Alta",
-  },
-];
 
 const operationalShortcuts = [
   { label: "Registrar una venta", href: "/ventas/venta" },
   { label: "Crear devolucion", href: "/devolucion/devolucion" },
-  { label: "Consultar reportes", href: "/reportes" },
+  { label: "Métricas", href: "/reportes" },
   { label: "Administrar usuarios", href: "/usuarios" },
 ];
 
 export default async function Home() {
   await requireSession("/");
+
+  let metricas = { stockCero: 0, stockBajo: 0, presupuestosVencidos: [], hoy: "" };
+  try {
+    metricas = await loadHomeMetricas();
+  } catch {
+    /* home sigue usable sin métricas */
+  }
+
+  const vencidosCount = metricas.presupuestosVencidos?.length ?? 0;
+  const alertaDia =
+    metricas.stockCero > 0 || metricas.stockBajo > 0 || vencidosCount > 0;
+
+  const metricCards = [
+    {
+      title: "Sin stock",
+      value: String(metricas.stockCero),
+      detail: "Productos activos con stock 0",
+      href: "/stock",
+      tone: metricas.stockCero > 0 ? "danger" : "ok",
+    },
+    {
+      title: "Stock mínimo",
+      value: String(metricas.stockBajo),
+      detail: "Productos activos con 1 o 2 unidades",
+      href: "/stock",
+      tone: metricas.stockBajo > 0 ? "warn" : "ok",
+    },
+    {
+      title: "Presupuestos vencidos",
+      value: String(vencidosCount),
+      detail: "Fecha de entrega pasada y saldo pendiente",
+      href: "/presupuestos",
+      tone: vencidosCount > 0 ? "danger" : "ok",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-100 via-zinc-50 to-zinc-100">
       <GlobalPageLoader />
@@ -79,72 +72,102 @@ export default async function Home() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-red-200/80 bg-red-50/70 px-4 py-3 text-sm text-red-900">
-              <p className="font-semibold">Atencion del dia</p>
-              <p className="mt-1 text-red-800/90">
-                Hay pendientes urgentes para revisar antes del cierre.
-              </p>
-            </div>
+            {alertaDia ? (
+              <div className="rounded-xl border border-red-200/80 bg-red-50/70 px-4 py-3 text-sm text-red-900">
+                <p className="font-semibold">Atencion del dia</p>
+                <p className="mt-1 text-red-800/90">
+                  Hay alertas en stock o presupuestos para revisar.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
+                <p className="font-semibold">Sin alertas criticas</p>
+                <p className="mt-1 text-emerald-800/90">Stock y presupuestos al dia.</p>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:mt-6 lg:grid-cols-4">
-          {statusCards.map((item) => (
-            <article
-              key={item.title}
-              className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5"
+        <section className="mt-4 lg:mt-6">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">Métricas</h2>
+            <Link
+              href="/reportes/graficos"
+              className="text-sm font-medium text-red-600 hover:text-red-700"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">
-                {item.title}
-              </p>
-              <p className="mt-2 text-2xl font-semibold leading-none text-zinc-900">
-                {item.value}
-              </p>
-              <p className="mt-2 text-sm text-zinc-600">{item.detail}</p>
-            </article>
-          ))}
-        </section>
+              Ver gráficos →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {metricCards.map((item) => {
+              const border =
+                item.tone === "danger"
+                  ? "border-red-200 bg-red-50/40"
+                  : item.tone === "warn"
+                    ? "border-amber-200 bg-amber-50/50"
+                    : "border-zinc-200 bg-white";
+              const valueColor =
+                item.tone === "danger"
+                  ? "text-red-700"
+                  : item.tone === "warn"
+                    ? "text-amber-800"
+                    : "text-zinc-900";
 
-        <section className="mt-4 grid grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-[1.35fr_1fr]">
-          <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
-                Prioridades del dia
-              </h2>
-              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600">
-                {priorities.length} tareas
-              </span>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {priorities.map((item) => (
+              return (
                 <Link
                   key={item.title}
                   href={item.href}
-                  className="block rounded-xl border border-zinc-200 bg-zinc-50/65 p-3 transition hover:border-red-200 hover:bg-red-50/40"
+                  className={`block rounded-xl border p-4 shadow-sm shadow-zinc-900/5 transition hover:ring-2 hover:ring-red-200/80 ${border}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-semibold text-zinc-900 sm:text-[15px]">
-                      {item.title}
-                    </p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        item.label === "Alta"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {item.label}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-sm text-zinc-600">{item.description}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">
+                    {item.title}
+                  </p>
+                  <p className={`mt-2 text-3xl font-semibold leading-none ${valueColor}`}>
+                    {item.value}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-600">{item.detail}</p>
                 </Link>
-              ))}
-            </div>
-          </article>
+              );
+            })}
+          </div>
 
-          <div className="space-y-4">
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
+          {vencidosCount > 0 ? (
+            <article className="mt-4 rounded-xl border border-red-200/80 bg-white p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-zinc-900">
+                Presupuestos con saldo pendiente y fecha vencida
+              </h3>
+              <ul className="mt-3 divide-y divide-zinc-100">
+                {metricas.presupuestosVencidos.slice(0, 8).map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                    <div>
+                      <Link
+                        href={`/presupuestos?id=${p.id}`}
+                        className="font-semibold text-zinc-900 hover:text-red-600"
+                      >
+                        {p.nombre_persona ?? `Presupuesto #${p.id}`}
+                      </Link>
+                      <p className="text-xs text-zinc-500">
+                        Venció {formatFechaAr(p.fecha_vence)}
+                        {metricas.hoy ? ` · Hoy ${formatFechaAr(metricas.hoy)}` : ""}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-red-700">
+                      Pendiente ${moneyEs(p.saldo)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              {vencidosCount > 8 ? (
+                <p className="mt-2 text-xs text-zinc-500">
+                  y {vencidosCount - 8} más en Presupuestos
+                </p>
+              ) : null}
+            </article>
+          ) : null}
+        </section>
+
+        <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-6">
+          <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
               <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
                 Atajos operativos
               </h2>
@@ -167,25 +190,24 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
-            </article>
+          </article>
 
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
-              <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
-                Recordatorio de cierre
-              </h2>
-              <ul className="mt-3 space-y-2 text-sm text-zinc-600">
-                <li className="rounded-lg bg-zinc-50 px-3 py-2">
-                  Confirmar cobranzas del dia.
-                </li>
-                <li className="rounded-lg bg-zinc-50 px-3 py-2">
-                  Verificar devoluciones procesadas.
-                </li>
-                <li className="rounded-lg bg-zinc-50 px-3 py-2">
-                  Revisar faltantes para manana.
-                </li>
-              </ul>
-            </article>
-          </div>
+          <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
+            <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
+              Recordatorio de cierre
+            </h2>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-600">
+              <li className="rounded-lg bg-zinc-50 px-3 py-2">
+                Confirmar cobranzas del dia.
+              </li>
+              <li className="rounded-lg bg-zinc-50 px-3 py-2">
+                Verificar devoluciones procesadas.
+              </li>
+              <li className="rounded-lg bg-zinc-50 px-3 py-2">
+                Revisar faltantes para manana.
+              </li>
+            </ul>
+          </article>
         </section>
       </main>
     </div>

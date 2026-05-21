@@ -218,8 +218,8 @@ const menuItems = [
   { type: "link", href: "/ingreso-pedido", label: "Ingreso pedido", id: "ingreso-pedido", icon: IconIngresoPedido },
   {
     type: "group",
-    label: "Reportes",
-    id: "reportes",
+    label: "Métricas",
+    id: "metricas",
     icon: IconReportes,
     children: [
       { href: "/reportes/graficos", label: "Gráficos", id: "reportes-graficos" },
@@ -256,13 +256,13 @@ const menuItems = [
 
 export default function AppSidebar({ active }) {
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState({ ventas: false, devoluciones: false, reportes: false });
+  const [expanded, setExpanded] = useState({ ventas: false, devoluciones: false, metricas: false });
 
   const autoExpanded = useMemo(
     () => ({
       ventas: pathname?.startsWith("/ventas/"),
       devoluciones: pathname?.startsWith("/devolucion/"),
-      reportes: pathname?.startsWith("/reportes/"),
+      metricas: pathname?.startsWith("/reportes/"),
     }),
     [pathname],
   );
