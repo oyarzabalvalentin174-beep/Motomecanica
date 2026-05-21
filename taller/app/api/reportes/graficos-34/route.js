@@ -20,10 +20,15 @@ export async function GET(request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  const periodo = String(request.nextUrl.searchParams.get("periodo") ?? "mes")
+    .trim()
+    .toLowerCase();
+  const fecha_ref = parseYmd(request.nextUrl.searchParams.get("fecha"));
   const fecha_desde = parseYmd(request.nextUrl.searchParams.get("desde"));
   const fecha_hasta = parseYmd(request.nextUrl.searchParams.get("hasta"));
 
-  const par = {};
+  const par = { periodo: ["dia", "semana", "mes", "anio"].includes(periodo) ? periodo : "mes" };
+  if (fecha_ref !== undefined) par.fecha_ref = fecha_ref;
   if (fecha_desde !== undefined) par.fecha_desde = fecha_desde;
   if (fecha_hasta !== undefined) par.fecha_hasta = fecha_hasta;
 

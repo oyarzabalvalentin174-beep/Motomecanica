@@ -3,6 +3,7 @@ import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
 import ReportesGraficosClient from "@/components/ReportesGraficosClient";
 import { exec } from "@/components/db";
+import { loadGraficos12 } from "@/lib/reportesGraficos12";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,16 @@ export default async function ReportesGraficosPage() {
   let error34 = null;
   let errorKpis = null;
 
+  const periodoInicial = "mes";
+
   try {
-    initial12 = await exec("spgetreportegraficos12", {});
+    initial12 = await loadGraficos12({ periodo: periodoInicial });
   } catch (e) {
-    error12 = e?.message || "No se pudo ejecutar spgetreportegraficos12";
+    error12 = e?.message || "No se pudieron cargar los gráficos de stock y ventas";
   }
 
   try {
-    initial34 = await exec("spgetreportegraficos34", {});
+    initial34 = await exec("spgetreportegraficos34", { periodo: periodoInicial });
   } catch (e) {
     error34 = e?.message || "No se pudo ejecutar spgetreportegraficos34";
   }
