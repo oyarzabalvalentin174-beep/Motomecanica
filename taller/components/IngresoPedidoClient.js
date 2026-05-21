@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
 function money(n) {
   const x = Number(n);
@@ -18,6 +20,98 @@ function normalizeDescription(value) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return null;
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+const MIN_BARCODE_LEN = 3;
+const BARCODE_HINTS = new Map();
+BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.ITF,
+]);
+BARCODE_HINTS.set(DecodeHintType.TRY_HARDER, true);
+
+function findProductByCodigoBarraExacto(list, code) {
+  const c = String(code ?? "").trim();
+  if (!c) return null;
+  return (Array.isArray(list) ? list : []).find((p) => String(p.codigo_barra ?? "").trim() === c) ?? null;
+}
+
+let scanSuccessAudioCtx;
+
+function playScanSuccessSound() {
+  if (typeof window === "undefined") return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    scanSuccessAudioCtx = scanSuccessAudioCtx || new AC();
+    const ctx = scanSuccessAudioCtx;
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.07);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.1, t0 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.14);
+  } catch {
+    // Navegador sin audio o política de autoplay.
+  }
+}
+
+async function optimizeActiveCameraTrack(videoEl) {
+  try {
+    const stream = videoEl?.srcObject;
+    const track = stream?.getVideoTracks?.()?.[0];
+    if (!track?.getCapabilities || !track?.applyConstraints) return;
+
+    const caps = track.getCapabilities();
+    const advanced = [];
+
+    if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+      advanced.push({ focusMode: "continuous" });
+    }
+    if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes("continuous")) {
+      advanced.push({ exposureMode: "continuous" });
+    }
+    if (typeof caps.zoom?.max === "number" && caps.zoom.max >= 1.2) {
+      advanced.push({ zoom: Math.min(1.4, caps.zoom.max) });
+    }
+    if (advanced.length === 0) return;
+
+    await track.applyConstraints({ advanced });
+  } catch {
+    // Ignorar dispositivos/navegadores que no soportan estas optimizaciones.
+  }
+}
+
+async function pickBackCameraDeviceId() {
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    tempStream.getTracks().forEach((t) => t.stop());
+  } catch {
+    // Si falla, se manejará en decodeFromVideoDevice.
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoInputs = devices.filter((d) => d.kind === "videoinput");
+  if (videoInputs.length === 0) return undefined;
+
+  const rear = videoInputs.find((d) => /back|rear|environment|trasera/i.test(d.label || ""));
+  return rear?.deviceId || videoInputs[0].deviceId;
 }
 
 export default function IngresoPedidoClient({
@@ -40,6 +134,15 @@ export default function IngresoPedidoClient({
   const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState(null);
   const [clearedHint, setClearedHint] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanError, setScanError] = useState(null);
+  const [scanReady, setScanReady] = useState(false);
+
+  const productosRef = useRef(productos);
+  productosRef.current = productos;
+  const videoScanRef = useRef(null);
+  const scanControlsRef = useRef(null);
+  const lastDetectedRef = useRef({ code: "", at: 0 });
 
   const marcasOptions = useMemo(
     () =>
@@ -59,33 +162,6 @@ export default function IngresoPedidoClient({
     [sectores],
   );
 
-  function runSearch() {
-    const t = String(query || "").trim().toLowerCase();
-    if (!t) {
-      setBanner({ type: "error", text: "Ingresá código o nombre para buscar." });
-      setResultados([]);
-      return;
-    }
-    const rows = productos.filter((p) => {
-      const nom = String(p?.nombre ?? "").toLowerCase();
-      const cod = String(p?.codigo ?? "").toLowerCase();
-      const cb = String(p?.codigo_barra ?? "").toLowerCase();
-      return nom.includes(t) || cod.includes(t) || cb.includes(t);
-    });
-    setResultados(rows.slice(0, 20));
-    if (rows.length === 0) {
-      setSelected(null);
-      setPrecioCompra("");
-      setPrecioVenta("");
-      setIngresoStock("1");
-      setNuevoNombre(query.trim());
-      setNuevoCodigo("");
-      setBanner({ type: "error", text: "No se encontró producto. Podés crearlo abajo." });
-    } else {
-      setBanner(null);
-    }
-  }
-
   function selectProduct(p) {
     setSelected(p);
     setPrecioCompra(String(p?.precio_compra ?? 0));
@@ -94,6 +170,169 @@ export default function IngresoPedidoClient({
     setClearedHint(false);
     setBanner(null);
   }
+
+  const applySearch = useCallback(
+    (termInput, opts = {}) => {
+      const raw = String(termInput ?? "").trim();
+      const t = raw.toLowerCase();
+      if (!t) {
+        setBanner({ type: "error", text: "Ingresá código o nombre para buscar." });
+        setResultados([]);
+        return;
+      }
+
+      setQuery(raw);
+      setClearedHint(false);
+
+      const exact = findProductByCodigoBarraExacto(productosRef.current, raw);
+      if (exact) {
+        if (opts.fromScan) playScanSuccessSound();
+        selectProduct(exact);
+        setResultados([exact]);
+        setBanner({
+          type: "ok",
+          text: opts.fromScan
+            ? `Código leído: ${raw}. Producto seleccionado.`
+            : `Producto encontrado: ${exact.nombre}`,
+        });
+        return;
+      }
+
+      const rows = productosRef.current.filter((p) => {
+        const nom = String(p?.nombre ?? "").toLowerCase();
+        const cod = String(p?.codigo ?? "").toLowerCase();
+        const cb = String(p?.codigo_barra ?? "").toLowerCase();
+        return nom.includes(t) || cod.includes(t) || cb.includes(t);
+      });
+      const limited = rows.slice(0, 20);
+      setResultados(limited);
+
+      if (rows.length === 0) {
+        setSelected(null);
+        setPrecioCompra("");
+        setPrecioVenta("");
+        setIngresoStock("1");
+        setNuevoNombre(raw);
+        setNuevoCodigo("");
+        setBanner({
+          type: "error",
+          text: opts.fromScan
+            ? `Código leído (${raw}) no encontrado. Podés crearlo abajo.`
+            : "No se encontró producto. Podés crearlo abajo.",
+        });
+      } else if (rows.length === 1) {
+        if (opts.fromScan) playScanSuccessSound();
+        selectProduct(rows[0]);
+        setBanner(
+          opts.fromScan
+            ? { type: "ok", text: `Código leído: ${raw}. Producto seleccionado.` }
+            : null,
+        );
+      } else {
+        setSelected(null);
+        setPrecioCompra("");
+        setPrecioVenta("");
+        setIngresoStock("1");
+        setBanner(
+          opts.fromScan
+            ? { type: "ok", text: `Código leído: ${raw}. Elegí un producto de la lista.` }
+            : null,
+        );
+      }
+    },
+    [],
+  );
+
+  function runSearch() {
+    applySearch(query);
+  }
+
+  const abrirCamaraEscaner = useCallback(() => {
+    setBanner(null);
+    setScanError(null);
+    setScanReady(false);
+    lastDetectedRef.current = { code: "", at: 0 };
+    setCameraOpen(true);
+  }, []);
+
+  const handleDetectedCode = useCallback(
+    (rawCode) => {
+      const code = String(rawCode || "").trim();
+      if (code.length < MIN_BARCODE_LEN) return;
+      applySearch(code, { fromScan: true });
+      setCameraOpen(false);
+    },
+    [applySearch],
+  );
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined;
+    let cancelled = false;
+
+    const cleanup = () => {
+      if (scanControlsRef.current) {
+        scanControlsRef.current.stop();
+        scanControlsRef.current = null;
+      }
+      const v = videoScanRef.current;
+      if (v) {
+        v.pause();
+        v.srcObject = null;
+      }
+    };
+
+    const start = async () => {
+      try {
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          setScanError("Este navegador no permite acceso a cámara.");
+          return;
+        }
+        const video = videoScanRef.current;
+        if (!video) return;
+
+        const deviceId = await pickBackCameraDeviceId();
+        const reader = new BrowserMultiFormatReader(BARCODE_HINTS);
+        const controls = await reader.decodeFromVideoDevice(
+          deviceId,
+          video,
+          (result) => {
+            if (cancelled) return;
+            const raw = String(result?.getText?.() ?? "").trim();
+            if (!raw) return;
+            const now = Date.now();
+            const last = lastDetectedRef.current;
+            if (last.code === raw && now - last.at < 900) return;
+            lastDetectedRef.current = { code: raw, at: now };
+            if (navigator?.vibrate) navigator.vibrate(120);
+            handleDetectedCode(raw);
+          },
+        );
+
+        if (cancelled) {
+          controls?.stop?.();
+          return;
+        }
+
+        scanControlsRef.current = controls;
+        await optimizeActiveCameraTrack(video);
+        setScanReady(true);
+      } catch (e) {
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("permission")) {
+          setScanError("Necesitamos acceso a la cámara para escanear códigos.");
+        } else {
+          setScanError(msg || "No se pudo abrir la cámara.");
+        }
+      }
+    };
+
+    start();
+    return () => {
+      cancelled = true;
+      cleanup();
+      setScanReady(false);
+    };
+  }, [cameraOpen, handleDetectedCode]);
 
   function onQueryChange(value) {
     setQuery(value);
@@ -281,13 +520,24 @@ export default function IngresoPedidoClient({
                   runSearch();
                 }
               }}
-              placeholder="Ej: ms5000 o aceite"
+              placeholder="Ej: ms5000, código de barras o nombre"
               className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
             />
             <button
               type="button"
+              onClick={abrirCamaraEscaner}
+              disabled={productos.length === 0}
+              className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
+              title="Escanear código de barras con cámara"
+              aria-label="Escanear código de barras con cámara"
+            >
+              <span aria-hidden>📷</span>
+            </button>
+            <button
+              type="button"
               onClick={runSearch}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+              disabled={productos.length === 0}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
             >
               Buscar
             </button>
@@ -497,6 +747,60 @@ export default function IngresoPedidoClient({
           )}
         </section>
       </div>
+
+      {cameraOpen ? (
+        <div
+          className="fixed inset-0 z-[72] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-scan-ingreso-pedido"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="modal-scan-ingreso-pedido" className="text-base font-semibold text-zinc-900">
+                  Escanear código con cámara
+                </h3>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Apuntá al código de barras. Al detectarlo se busca y selecciona el producto.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCameraOpen(false)}
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-black">
+              <video ref={videoScanRef} autoPlay playsInline muted className="h-[280px] w-full object-cover" />
+              {scanReady && !scanError ? (
+                <>
+                  <div className="pointer-events-none absolute inset-x-[8%] top-1/2 -translate-y-1/2 border-t-2 border-red-500/90 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                  <div className="pointer-events-none absolute inset-x-[8%] top-[calc(50%-16px)] h-8 rounded-md border border-red-500/35" />
+                </>
+              ) : null}
+              {!scanReady && !scanError ? (
+                <div className="absolute inset-0 grid place-items-center bg-black/40 text-sm font-medium text-white">
+                  Iniciando cámara...
+                </div>
+              ) : null}
+            </div>
+
+            {scanError ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                {scanError}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">
+                Si no detecta, acercá o alejá el celular y mejorá la iluminación.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
