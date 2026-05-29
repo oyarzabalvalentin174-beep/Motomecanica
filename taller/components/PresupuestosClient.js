@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
+import PresupuestoExcelImportModal from "@/components/PresupuestoExcelImportModal";
 
 function parseQty(s) {
   const n = parseFloat(String(s ?? "").replace(",", "."));
@@ -188,6 +189,7 @@ export default function PresupuestosClient({
   const [nuevaEntregaMonto, setNuevaEntregaMonto] = useState("");
   const [rows, setRows] = useState([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
   const [nuevoNombreBusqueda, setNuevoNombreBusqueda] = useState("");
   /** Con presupuesto guardado abierto: al elegirlo desde la lista se oculta el panel de búsqueda para centrar el trabajo. */
   const [listadoVisible, setListadoVisible] = useState(() => {
@@ -517,6 +519,42 @@ export default function PresupuestosClient({
     setBanner(null);
   };
 
+  const aplicarImportacionExcel = useCallback(
+    ({ nombrePersona: nom, km: kmImp, datosVehiculo: veh, lineas: lineasImp, modo }) => {
+      setNombrePersona(nom);
+      if (kmImp) setKm(kmImp);
+      if (veh) setDatosVehiculo(veh);
+      const nuevas = lineasImp.map((l, i) => ({
+        key: `xls-${Date.now()}-${i}`,
+        id: null,
+        parametro: l.parametro,
+        cantidad: l.cantidad,
+        precio_unitario: l.precio_unitario,
+        valor: "",
+        notas: l.notas || "",
+        presupuesto_id: selectedId || null,
+      }));
+      setRows((prev) => {
+        const vacias = prev.filter((r) => !String(r.parametro || "").trim());
+        const conDatos = prev.filter((r) => String(r.parametro || "").trim());
+        if (modo === "append") {
+          const base = conDatos.length ? conDatos : vacias.length ? [] : [];
+          return [...base, ...nuevas];
+        }
+        return nuevas.length ? nuevas : [emptyLine(selectedId)];
+      });
+      setBanner({
+        type: "ok",
+        text: `Se importaron ${nuevas.length} línea(s) desde Excel. Revisá y guardá cuando esté correcto.`,
+      });
+      setListadoVisible(false);
+      requestAnimationFrame(() => {
+        workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    [selectedId],
+  );
+
   return (
     <>
       <div className="print:hidden">
@@ -593,6 +631,13 @@ export default function PresupuestosClient({
                     className="rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 sm:text-base"
                   >
                     Limpiar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsExcelImportOpen(true)}
+                    className="col-span-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:col-span-1"
+                  >
+                    Importar Excel
                   </button>
                 </div>
                 <p className="mt-2 text-xs leading-snug text-zinc-500">
@@ -718,6 +763,13 @@ export default function PresupuestosClient({
                         className="min-h-10 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 sm:min-h-11 sm:px-4 sm:text-base"
                       >
                         + Ítem
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsExcelImportOpen(true)}
+                        className="min-h-10 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 shadow-sm hover:bg-violet-100 sm:min-h-11 sm:px-4 sm:text-base"
+                      >
+                        Importar Excel
                       </button>
                       <button
                         type="button"
@@ -1065,6 +1117,12 @@ export default function PresupuestosClient({
           </div>
         </div>
       ) : null}
+
+      <PresupuestoExcelImportModal
+        open={isExcelImportOpen}
+        onClose={() => setIsExcelImportOpen(false)}
+        onApply={aplicarImportacionExcel}
+      />
 
       {/* Solo vista impresión: marco, logo con URL absoluta (id usado en globals.css @media print) */}
       <div id="presupuesto-print-area" className="hidden print:block">
