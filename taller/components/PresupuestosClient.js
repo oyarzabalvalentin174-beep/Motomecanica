@@ -468,25 +468,43 @@ export default function PresupuestosClient({
     }
   };
 
-  const enfocarSoloPresupuesto = useCallback(() => {
-    setListadoVisible(false);
-    requestAnimationFrame(() => {
-      workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, []);
-
-  const abrirListadoLateral = useCallback(() => {
+  const volverAListado = useCallback(() => {
     setListadoVisible(true);
-  }, []);
+    setBusqueda("");
+    setBanner(null);
+    router.replace("/presupuestos");
+    setNombrePersona("");
+    setObservaciones("");
+    setDatosVehiculo("");
+    setKm("");
+    setFechaEntregaEstimada("");
+    setFechaEntregaComprometida("");
+    setEntregas([]);
+    setNuevaEntregaMonto("");
+    setRows([]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [router]);
+
+  const cardSurface =
+    "rounded-2xl border border-zinc-300/45 bg-zinc-50/90 p-4 shadow-sm sm:p-5";
 
   const inputCell =
-    "h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-base leading-snug text-zinc-900 shadow-sm outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/15";
+    "h-11 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-3 py-2 text-base leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10";
 
   const inputCellCompact =
-    "h-9 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm leading-snug text-zinc-900 shadow-sm outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/15 tabular-nums";
+    "h-10 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-2 py-1.5 text-sm leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10 tabular-nums";
 
   const notesCell =
-    "min-h-[5rem] max-h-56 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-base leading-relaxed text-zinc-900 shadow-sm outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/15";
+    "min-h-[5rem] max-h-56 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-3 py-2.5 text-base leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10";
+
+  const btnSecundario =
+    "min-h-11 rounded-lg border border-zinc-300/60 bg-zinc-100/80 px-4 py-2 text-base font-semibold text-zinc-800 transition hover:bg-zinc-200/70";
+
+  const btnPrimario =
+    "min-h-11 rounded-lg bg-gradient-to-r from-emerald-700/90 to-emerald-600/90 px-4 py-2 text-base font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-emerald-500";
+
+  const btnPeligro =
+    "min-h-11 rounded-lg border border-red-300/50 bg-red-50/80 px-4 py-2 text-base font-semibold text-red-800 transition hover:bg-red-100/80";
 
   const puedeImprimir =
     Boolean(nombrePersona.trim()) &&
@@ -499,7 +517,6 @@ export default function PresupuestosClient({
   const puedeCrearDesdeBusqueda = Boolean(busquedaTrim) && !busquedaCoincideAlguno;
   const hayPresupuestoAbierto =
     selectedId > 0 || Boolean(nombrePersona.trim()) || rows.length > 0;
-  const vistaFocoPresupuesto = selectedId > 0 && !listadoVisible;
 
   const abrirModalCrear = () => {
     setNuevoNombreBusqueda(busquedaTrim);
@@ -559,112 +576,99 @@ export default function PresupuestosClient({
     <>
       <div className="print:hidden">
         <div className="mx-auto w-full max-w-screen-2xl px-3 pb-10 pt-1 sm:px-5 lg:px-6">
-          <header className="border-b border-zinc-200/90 pb-3 lg:pb-4">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+          <header className="border-b border-zinc-300/40 pb-4">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-800 sm:text-3xl">
               Presupuestos
             </h1>
-            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-600 sm:text-base">
-              Buscá en el listado y tocá un cliente para trabajar a pantalla completa; con «Buscar otro» volvés al listado.
-            </p>
+            {!hayPresupuestoAbierto ? (
+              <p className="mt-2 max-w-2xl text-base leading-relaxed text-zinc-600">
+                Escribí el nombre del cliente abajo para buscar. Tocá uno de la lista para abrirlo.
+              </p>
+            ) : (
+              <p className="mt-2 text-base text-zinc-600">
+                Cliente:{" "}
+                <span className="font-semibold text-zinc-800">
+                  {nombrePersona.trim() || "Sin nombre"}
+                </span>
+              </p>
+            )}
           </header>
 
-          <div className="mt-3 space-y-3 sm:mt-4">
+          <div className="mt-4 space-y-4">
             {listError ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-base font-medium text-amber-950">
+              <div className="rounded-lg border border-amber-300/50 bg-amber-50/90 px-4 py-3 text-base font-medium text-amber-950">
                 {listError}
               </div>
             ) : null}
 
             {banner ? (
               <div
-                className={`rounded-lg border px-3 py-2 text-base font-medium ${
+                className={`rounded-lg border px-4 py-3 text-base font-medium ${
                   banner.type === "ok"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                    : "border-red-200 bg-red-50 text-red-900"
+                    ? "border-emerald-300/50 bg-emerald-50/90 text-emerald-900"
+                    : "border-red-300/50 bg-red-50/90 text-red-900"
                 }`}
               >
                 {banner.text}
               </div>
             ) : null}
-          </div>
 
-          <div
-            className={
-              vistaFocoPresupuesto
-                ? "mt-4 lg:mt-6"
-                : "mt-4 lg:mt-6 lg:grid lg:grid-cols-[minmax(260px,20rem)_minmax(0,1fr)] lg:items-start lg:gap-8"
-            }
-          >
-            <aside
-              className={
-                vistaFocoPresupuesto
-                  ? "hidden"
-                  : "min-w-0 space-y-3 lg:sticky lg:top-[5.25rem] lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1"
-              }
-            >
-              <section className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm ring-1 ring-zinc-100">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                  Listado
-                </h2>
-                <label className="mt-2 block text-sm font-semibold text-zinc-500">
-                  Buscar por cliente u observaciones
+            {!hayPresupuestoAbierto ? (
+              <section className={cardSurface}>
+                <label className="block">
+                  <span className="text-base font-semibold text-zinc-700">
+                    Buscar presupuesto por nombre de cliente
+                  </span>
                   <input
                     type="search"
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
-                    placeholder="Nombre, nota…"
-                    className={`mt-1 ${inputCell}`}
+                    placeholder="Ejemplo: Juan Pérez"
+                    className={`mt-2 ${inputCell} text-lg sm:text-base`}
                     autoComplete="off"
                   />
                 </label>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <p className="mt-2 text-sm text-zinc-500">
+                  {!busquedaTrim
+                    ? "Se muestran los últimos 40 presupuestos. Escribí un nombre para filtrar."
+                    : "Presupuestos que coinciden con tu búsqueda."}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={abrirModalCrear}
-                    className="col-span-2 rounded-xl bg-gradient-to-r from-red-700 to-red-600 px-4 py-2.5 text-base font-semibold text-white shadow-sm hover:from-red-600 hover:to-red-500 sm:col-span-1 sm:flex-1"
+                    className="min-h-11 rounded-lg bg-gradient-to-r from-red-700/90 to-red-600/90 px-5 py-2.5 text-base font-semibold text-white shadow-sm transition hover:from-red-600 hover:to-red-500"
                   >
                     Nuevo presupuesto
                   </button>
                   <button
                     type="button"
-                    onClick={nuevoPresupuesto}
-                    className="rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 sm:text-base"
-                  >
-                    Limpiar
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setIsExcelImportOpen(true)}
-                    className="col-span-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:col-span-1"
+                    className="min-h-11 rounded-lg border border-violet-300/50 bg-violet-50/80 px-4 py-2.5 text-base font-semibold text-violet-900 transition hover:bg-violet-100/70"
                   >
                     Importar Excel
                   </button>
                 </div>
-                <p className="mt-2 text-xs leading-snug text-zinc-500">
-                  {!busquedaTrim
-                    ? "Mostrando los últimos 40. Escribí para acotar la lista."
-                    : "Resultados que coinciden con la búsqueda."}
-                </p>
-                <div className="mt-3 max-h-[min(360px,48vh)] overflow-y-auto rounded-xl border border-zinc-100 bg-zinc-50/60 p-2 lg:max-h-[min(420px,52vh)]">
+                <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-zinc-300/40 bg-zinc-100/50 p-2">
                   {!hayListaSistema ? (
-                    <p className="px-2 py-6 text-center text-sm text-zinc-500">
-                      Todavía no hay presupuestos guardados. Creá el primero con «Nuevo presupuesto».
+                    <p className="px-2 py-8 text-center text-base text-zinc-500">
+                      Todavía no hay presupuestos. Creá el primero con «Nuevo presupuesto».
                     </p>
                   ) : listaFiltrada.length === 0 && busquedaTrim ? (
-                    <div className="px-2 py-5 text-center text-sm text-zinc-600">
-                      <p>No hay coincidencias para «{busquedaTrim}».</p>
+                    <div className="px-2 py-6 text-center text-base text-zinc-600">
+                      <p>No se encontró «{busquedaTrim}».</p>
                       {puedeCrearDesdeBusqueda ? (
                         <button
                           type="button"
                           onClick={abrirModalCrear}
-                          className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100"
+                          className="mt-4 rounded-lg border border-emerald-300/50 bg-emerald-50/90 px-4 py-2.5 text-base font-semibold text-emerald-900 transition hover:bg-emerald-100/80"
                         >
-                          Crear para «{busquedaTrim}»
+                          Crear presupuesto para «{busquedaTrim}»
                         </button>
                       ) : null}
                     </div>
                   ) : (
-                    <ul className="space-y-1.5">
+                    <ul className="space-y-2">
                       {listaFiltrada.map((p) => {
                         const active = selectedId === p.id;
                         return (
@@ -672,17 +676,17 @@ export default function PresupuestosClient({
                             <button
                               type="button"
                               onClick={() => elegirPresupuestoDesdeLista(p.id)}
-                              className={`w-full rounded-xl border px-3 py-2.5 text-left text-base transition ${
+                              className={`w-full rounded-xl border px-4 py-3 text-left text-base transition ${
                                 active
-                                  ? "border-red-500 bg-red-600 font-semibold text-white shadow-md"
-                                  : "border-transparent bg-white text-zinc-800 hover:border-zinc-200 hover:bg-zinc-100"
+                                  ? "border-red-400/60 bg-red-50 font-semibold text-red-950"
+                                  : "border-zinc-300/40 bg-zinc-50/90 text-zinc-800 hover:border-zinc-400/50 hover:bg-zinc-100/90"
                               }`}
                             >
                               <span className="line-clamp-2 leading-snug">{p.nombre_persona}</span>
                               {p.fecha_actualizacion ? (
                                 <span
-                                  className={`mt-1 block text-xs tabular-nums ${
-                                    active ? "text-red-100" : "text-zinc-500"
+                                  className={`mt-1 block text-sm tabular-nums ${
+                                    active ? "text-red-800/70" : "text-zinc-500"
                                   }`}
                                 >
                                   {new Date(p.fecha_actualizacion).toLocaleDateString("es-AR", {
@@ -699,110 +703,59 @@ export default function PresupuestosClient({
                     </ul>
                   )}
                   {listaEsRecortada ? (
-                    <p className="mt-2 border-t border-zinc-200/80 px-1 pt-2 text-center text-[11px] text-zinc-400">
-                      Hay más en base; usá la búsqueda para encontrar otros.
+                    <p className="mt-3 border-t border-zinc-300/40 px-1 pt-3 text-center text-sm text-zinc-500">
+                      Hay más presupuestos guardados. Usá el buscador para encontrarlos.
                     </p>
                   ) : null}
                 </div>
               </section>
-            </aside>
+            ) : null}
+          </div>
 
-            <div
-              ref={workspaceRef}
-              id="presupuesto-workspace"
-              className={
-                vistaFocoPresupuesto
-                  ? "mx-auto w-full max-w-5xl space-y-4 pt-4 lg:max-w-6xl lg:pt-0"
-                  : "min-w-0 space-y-4 pt-4 lg:pt-0"
-              }
-            >
-              {!hayPresupuestoAbierto ? (
-                <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/80 px-6 py-12 text-center shadow-sm sm:py-16">
-                  <p className="mx-auto max-w-md text-base leading-relaxed text-zinc-600">
-                    Tocá un nombre en la lista de la izquierda, o «Nuevo presupuesto», para abrir el editor con cliente e ítems.
-                  </p>
-                </div>
-              ) : (
+          {hayPresupuestoAbierto ? (
+          <div
+            ref={workspaceRef}
+            id="presupuesto-workspace"
+            className="mx-auto mt-4 w-full max-w-5xl space-y-4 lg:max-w-6xl"
+          >
                 <>
-                  <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm ring-1 ring-zinc-100 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                        Trabajando en
-                      </p>
-                      <p className="truncate text-lg font-bold text-zinc-900 sm:text-xl">
-                        {nombrePersona.trim() || "Sin nombre de cliente"}
-                      </p>
-                      <p className="mt-0.5 text-sm text-zinc-500">
-                        {selectedId
-                          ? `Presupuesto guardado · #${selectedId}`
-                          : "Borrador · guardá para conservarlo en el sistema"}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3 sm:border-t-0 sm:pt-0">
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold tabular-nums text-emerald-950">
-                        <span className="font-semibold text-emerald-800">Total</span> $
-                        {fmtMoney(totalGeneral)}
-                        {montoSena > 0 ? (
-                          <span className="mt-1 block text-xs font-semibold text-emerald-900">
-                            Pendiente ${fmtMoney(saldoPendiente)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {selectedId > 0 ? (
-                        <button
-                          type="button"
-                          onClick={listadoVisible ? enfocarSoloPresupuesto : abrirListadoLateral}
-                          className="min-h-10 rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-100 sm:min-h-11 sm:px-4 sm:text-base"
-                        >
-                          {listadoVisible ? "Solo presupuesto" : "Buscar otro"}
-                        </button>
-                      ) : null}
+                  <div className={`${cardSurface} flex flex-col gap-4`}>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                       <button
                         type="button"
-                        onClick={agregarLinea}
-                        className="min-h-10 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 sm:min-h-11 sm:px-4 sm:text-base"
+                        onClick={volverAListado}
+                        className={btnSecundario}
                       >
+                        ← Volver
+                      </button>
+                      <div className="rounded-lg border border-emerald-300/45 bg-emerald-50/80 px-4 py-2.5 text-lg font-bold tabular-nums text-emerald-950">
+                        Total: ${fmtMoney(totalGeneral)}
+                      </div>
+                      <button type="button" onClick={agregarLinea} className={btnSecundario}>
                         + Ítem
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsExcelImportOpen(true)}
-                        className="min-h-10 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 shadow-sm hover:bg-violet-100 sm:min-h-11 sm:px-4 sm:text-base"
-                      >
-                        Importar Excel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={guardarTodo}
-                        className="min-h-10 rounded-lg bg-gradient-to-r from-emerald-700 to-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:from-emerald-600 hover:to-emerald-500 sm:min-h-11 sm:px-4 sm:text-base"
-                      >
+                      <button type="button" onClick={guardarTodo} className={btnPrimario}>
                         Guardar
                       </button>
                       <button
                         type="button"
                         onClick={imprimir}
                         disabled={!puedeImprimir}
-                        className="min-h-10 rounded-lg border border-zinc-400 bg-zinc-100 px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm hover:bg-zinc-200 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-base"
+                        className={`${btnSecundario} disabled:opacity-50`}
                       >
                         Imprimir
                       </button>
                       {selectedId ? (
-                        <button
-                          type="button"
-                          onClick={eliminarPresupuesto}
-                          className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 sm:min-h-11 sm:px-4 sm:text-base"
-                        >
+                        <button type="button" onClick={eliminarPresupuesto} className={btnPeligro}>
                           Eliminar
                         </button>
                       ) : null}
                     </div>
                   </div>
 
-                  <section className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm ring-1 ring-zinc-100 sm:p-5">
-                    <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Cliente y notas
-                    </h2>
-                    <label className="mt-3 block text-sm font-semibold text-zinc-500">
+                  <section className={cardSurface}>
+                    <h2 className="text-base font-semibold text-zinc-700">Cliente y notas</h2>
+                    <label className="mt-3 block text-base font-semibold text-zinc-600">
                       Nombre del cliente
                       <input
                         value={nombrePersona}
@@ -812,8 +765,8 @@ export default function PresupuestosClient({
                         placeholder="Nombre y apellido"
                       />
                     </label>
-                    <label className="mt-3 block text-sm font-semibold text-zinc-500">
-                      Observaciones <span className="font-normal text-zinc-400">(opc.)</span>
+                    <label className="mt-3 block text-base font-semibold text-zinc-600">
+                      Observaciones <span className="font-normal text-zinc-400">(opcional)</span>
                       <textarea
                         value={observaciones}
                         onChange={(e) => setObservaciones(e.target.value)}
@@ -823,15 +776,15 @@ export default function PresupuestosClient({
                       />
                     </label>
 
-                    <details className="group mt-4 rounded-xl border border-zinc-100 bg-zinc-50/50 open:border-zinc-200 open:bg-white">
-                      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-800 [&::-webkit-details-marker]:hidden">
+                    <details className="group mt-4 rounded-xl border border-zinc-300/40 bg-zinc-100/40 open:border-zinc-300/55 open:bg-zinc-50/80">
+                      <summary className="cursor-pointer list-none px-4 py-3 text-base font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
                         <span className="flex items-center justify-between gap-2">
                           <span>Vehículo y fechas de entrega (opcional)</span>
                           <span className="text-zinc-400 transition-transform group-open:-rotate-180">▼</span>
                         </span>
                       </summary>
-                      <div className="space-y-3 border-t border-zinc-100 px-4 pb-4 pt-3">
-                        <label className="block text-sm font-semibold text-zinc-500">
+                      <div className="space-y-3 border-t border-zinc-300/35 px-4 pb-4 pt-3">
+                        <label className="block text-base font-semibold text-zinc-600">
                           Datos del vehículo
                           <input
                             value={datosVehiculo}
@@ -842,7 +795,7 @@ export default function PresupuestosClient({
                           />
                         </label>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="block text-sm font-semibold text-zinc-500">
+                          <label className="block text-base font-semibold text-zinc-600">
                             Kilometraje
                             <input
                               value={km}
@@ -852,7 +805,7 @@ export default function PresupuestosClient({
                               placeholder="Ej. 45200"
                             />
                           </label>
-                          <label className="block text-sm font-semibold text-zinc-500">
+                          <label className="block text-base font-semibold text-zinc-600">
                             Entrega estimada
                             <input
                               type="date"
@@ -861,7 +814,7 @@ export default function PresupuestosClient({
                               className={`mt-1 ${inputCell}`}
                             />
                           </label>
-                          <label className="block text-sm font-semibold text-zinc-500 sm:col-span-2">
+                          <label className="block text-base font-semibold text-zinc-600 sm:col-span-2">
                             Entrega comprometida
                             <input
                               type="date"
@@ -875,13 +828,11 @@ export default function PresupuestosClient({
                     </details>
                   </section>
 
-                  <section className="rounded-2xl border border-zinc-200/80 bg-white shadow-sm ring-1 ring-zinc-100">
-                    <div className="border-b border-zinc-200 bg-gradient-to-b from-zinc-50 to-zinc-50/90 px-4 py-3">
-                      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-600">
-                        Ítems del presupuesto
-                      </h2>
-                      <p className="mt-0.5 text-sm text-zinc-500">
-                        Cantidad × precio unitario (ARS) = subtotal. Deslizá horizontalmente en pantallas chicas.
+                  <section className={`${cardSurface} overflow-hidden p-0`}>
+                    <div className="border-b border-zinc-300/40 bg-zinc-100/60 px-4 py-3 sm:px-5">
+                      <h2 className="text-base font-semibold text-zinc-700">Ítems del presupuesto</h2>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Completá concepto, cantidad y precio. El subtotal se calcula solo.
                       </p>
                     </div>
 
@@ -895,7 +846,7 @@ export default function PresupuestosClient({
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full min-w-[52rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
-                            <thead className="border-b border-zinc-200 bg-zinc-100/95 text-[11px] font-semibold uppercase tracking-wide text-zinc-600 sm:text-xs">
+                            <thead className="border-b border-zinc-300/40 bg-zinc-100/70 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
                               <tr>
                                 <th className="w-10 whitespace-nowrap px-2 py-2.5 text-center font-medium text-zinc-500 sm:w-12">
                                   #
@@ -923,10 +874,10 @@ export default function PresupuestosClient({
                                 return (
                                   <tr
                                     key={row.key}
-                                    className={`border-b border-zinc-100 align-top ${idx % 2 === 1 ? "bg-zinc-50/60" : "bg-white"}`}
+                                    className={`border-b border-zinc-300/30 align-top ${idx % 2 === 1 ? "bg-zinc-100/40" : "bg-zinc-50/50"}`}
                                   >
                                     <td className="px-2 py-2 text-center align-top">
-                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-100/90 text-xs font-bold tabular-nums text-zinc-600 sm:text-sm">
+                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-200/50 text-sm font-bold tabular-nums text-zinc-600">
                                         {idx + 1}
                                       </span>
                                     </td>
@@ -965,7 +916,7 @@ export default function PresupuestosClient({
                                     </td>
                                     <td className="px-2 py-2 align-top">
                                       <div
-                                        className={`flex min-h-9 items-center justify-end rounded-md border border-zinc-100 bg-zinc-50 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
+                                        className={`flex min-h-10 items-center justify-end rounded-lg border border-zinc-300/35 bg-zinc-100/60 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
                                       >
                                         ${fmtMoney(tieneConcepto ? sub : 0)}
                                       </div>
@@ -977,7 +928,7 @@ export default function PresupuestosClient({
                                           actualizarCampo(row.key, "notas", e.target.value)
                                         }
                                         rows={2}
-                                        className="min-h-[3.25rem] max-h-36 w-full resize-y rounded-md border border-zinc-200 bg-white px-2 py-2 text-sm leading-relaxed text-zinc-900 shadow-sm outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/15"
+                                        className="min-h-[3.25rem] max-h-36 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-2 py-2 text-sm leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10"
                                         placeholder="Detalle"
                                       />
                                     </td>
@@ -987,7 +938,7 @@ export default function PresupuestosClient({
                                         aria-label="Quitar línea"
                                         title="Quitar línea"
                                         onClick={() => eliminarLinea(row)}
-                                        className="inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 px-1 py-1.5 text-sm font-bold text-red-700 transition hover:bg-red-100"
+                                        className="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-red-300/45 bg-red-50/70 px-1 py-1.5 text-base font-bold text-red-800 transition hover:bg-red-100/70"
                                       >
                                         ×
                                       </button>
@@ -1001,7 +952,7 @@ export default function PresupuestosClient({
                       )}
                     </div>
               {rows.length > 0 ? (
-                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-200 bg-zinc-50/90 px-4 py-3">
+                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-300/40 bg-zinc-100/50 px-4 py-3 sm:px-5">
                   {montoSena > 0 ? (
                     <p className="text-base font-semibold tabular-nums text-zinc-700">
                       Saldo pendiente:{" "}
@@ -1014,14 +965,12 @@ export default function PresupuestosClient({
                   </p>
                 </div>
               ) : null}
-              <div className="border-t border-zinc-200 bg-white px-4 py-4">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                  Entregas
-                </h3>
+              <div className="border-t border-zinc-300/40 bg-zinc-50/70 px-4 py-4 sm:px-5">
+                <h3 className="text-base font-semibold text-zinc-700">Entregas</h3>
                 {entregas.length > 0 ? (
-                  <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200">
+                  <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-300/40">
                     <table className="w-full min-w-[420px] text-left text-sm">
-                      <thead className="bg-zinc-50 text-zinc-600">
+                      <thead className="bg-zinc-100/70 text-zinc-600">
                         <tr>
                           <th className="px-3 py-2">Fecha y hora</th>
                           <th className="px-3 py-2 text-right">Monto</th>
@@ -1049,7 +998,7 @@ export default function PresupuestosClient({
                   </p>
                 )}
                 <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(160px,220px)_auto] sm:items-end">
-                  <label className="block text-sm font-semibold text-zinc-500">
+                  <label className="block text-base font-semibold text-zinc-600">
                     Nueva entrega ($)
                     <input
                       value={nuevaEntregaMonto}
@@ -1062,7 +1011,7 @@ export default function PresupuestosClient({
                   <button
                     type="button"
                     onClick={guardarNuevaEntrega}
-                    className="min-h-11 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-base font-semibold text-emerald-800 shadow-sm hover:bg-emerald-100"
+                    className="min-h-11 rounded-lg border border-emerald-300/50 bg-emerald-50/80 px-4 py-2 text-base font-semibold text-emerald-800 transition hover:bg-emerald-100/70"
                   >
                     + Registrar entrega
                   </button>
@@ -1075,15 +1024,14 @@ export default function PresupuestosClient({
               </div>
             </section>
                 </>
-              )}
-            </div>
           </div>
+          ) : null}
         </div>
       </div>
 
       {isCreateModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-300/50 bg-zinc-50 p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-zinc-900">Crear nuevo presupuesto</h3>
             <p className="mt-1 text-sm text-zinc-600">
               Ingresá el nombre del cliente para abrir el presupuesto nuevo.
