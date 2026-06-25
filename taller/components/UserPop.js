@@ -33,21 +33,6 @@ function IconRefresh() {
   );
 }
 
-function IconBell() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
-      <path
-        d="M7 10a5 5 0 0 1 10 0v3.6l1.3 2.3c.3.6-.1 1.1-.7 1.1H6.4c-.6 0-1-.5-.7-1.1L7 13.6V10Zm3.7 9a1.8 1.8 0 0 0 2.6 0"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function IconUser() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
@@ -62,10 +47,9 @@ function IconUser() {
   );
 }
 
-export default function UserPop({ loadAlerts }) {
+export default function UserPop() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [alertasCount, setAlertasCount] = useState({ total: 0, urgentes: 0 });
   const menuRef = useRef(null);
   const router = useRouter();
 
@@ -73,29 +57,6 @@ export default function UserPop({ loadAlerts }) {
     const interval = setInterval(() => setCurrentDate(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        const source = loadAlerts ? await loadAlerts() : [];
-        const alertas = Array.isArray(source) ? source : source?.data ?? [];
-        const urgentes = Array.isArray(alertas)
-          ? alertas.filter((item) => Number(item?.prioridad) === 1).length
-          : 0;
-
-        setAlertasCount({
-          total: Array.isArray(alertas) ? alertas.length : 0,
-          urgentes,
-        });
-      } catch {
-        setAlertasCount({ total: 0, urgentes: 0 });
-      }
-    };
-
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 60000);
-    return () => clearInterval(interval);
-  }, [loadAlerts]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -161,19 +122,6 @@ export default function UserPop({ loadAlerts }) {
             <IconRefresh />
           </button>
 
-          <button
-            type="button"
-            aria-label="Alertas"
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-500/45 bg-zinc-700/35 text-zinc-100 transition hover:border-red-500/55 hover:bg-red-600/85 hover:text-white"
-          >
-            <IconBell />
-            {alertasCount.total > 0 ? (
-              <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-red-400/40">
-                {alertasCount.total}
-              </span>
-            ) : null}
-          </button>
-
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -211,12 +159,6 @@ export default function UserPop({ loadAlerts }) {
           </div>
         </div>
       </div>
-
-      {alertasCount.urgentes > 0 ? (
-        <div className="mx-auto flex max-w-7xl items-center justify-end px-4 pb-2 text-[11px] font-semibold text-red-600 sm:px-6">
-          {alertasCount.urgentes} alerta(s) urgente(s)
-        </div>
-      ) : null}
     </header>
   );
 }

@@ -213,6 +213,21 @@ function IconAjustePrecio() {
   );
 }
 
+function IconUsoPersonal() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
+      <path
+        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const menuItems = [
   { type: "link", href: "/", label: "Inicio", id: "inicio", icon: IconInicio },
   { type: "link", href: "/ingreso-pedido", label: "Ingreso pedido", id: "ingreso-pedido", icon: IconIngresoPedido },
@@ -246,6 +261,7 @@ const menuItems = [
       { href: "/devolucion/devolucion", label: "Devolución", id: "devolucion-nueva" },
     ],
   },
+  { type: "link", href: "/uso-personal", label: "Uso personal", id: "uso-personal", icon: IconUsoPersonal },
   { type: "link", href: "/stock", label: "Stock", id: "stock", icon: IconStock },
   { type: "link", href: "/ajuste-precios", label: "Ajuste precios", id: "ajuste-precios", icon: IconAjustePrecio },
   { type: "link", href: "/marcas", label: "Marcas", id: "marcas", icon: IconMarcas },

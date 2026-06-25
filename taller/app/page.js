@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/requireSession";
 
 const operationalShortcuts = [
   { label: "Registrar una venta", href: "/ventas/venta" },
+  { label: "Uso personal / taller", href: "/uso-personal" },
   { label: "Crear devolucion", href: "/devolucion/devolucion" },
   { label: "Métricas", href: "/reportes" },
   { label: "Administrar usuarios", href: "/usuarios" },
