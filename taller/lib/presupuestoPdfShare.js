@@ -1,3 +1,5 @@
+const PDF_CAPTURE_HOST_ID = "presupuesto-pdf-capture-host";
+
 function safeFilename(name) {
   const base = String(name ?? "presupuesto")
     .trim()
@@ -32,7 +34,7 @@ function toSafeCssColor(value) {
   }
 }
 
-const COLOR_PROPS = new Set([
+const COLOR_PROPS = [
   "color",
   "background-color",
   "border-top-color",
@@ -45,64 +47,20 @@ const COLOR_PROPS = new Set([
   "caret-color",
   "fill",
   "stroke",
-]);
+];
 
-function sanitizeCSSValue(prop, value) {
-  const v = String(value ?? "").trim();
-  if (!v) return v;
-  if (COLOR_PROPS.has(prop) || /oklch|lab\(|color\(/.test(v)) {
-    return toSafeCssColor(v);
-  }
-  return v;
-}
-
-/** Copia todos los estilos calculados al clon (layout + colores seguros para html2canvas). */
-function inlineAllComputedStyles(sourceEl, cloneEl, getComputedStyleFn) {
-  if (!sourceEl || !cloneEl || sourceEl.nodeType !== 1 || cloneEl.nodeType !== 1) return;
-
-  const cs = getComputedStyleFn(sourceEl);
-  for (let i = 0; i < cs.length; i += 1) {
-    const prop = cs[i];
-    let val = cs.getPropertyValue(prop);
-    if (!val) continue;
-    val = sanitizeCSSValue(prop, val);
-    try {
-      cloneEl.style.setProperty(prop, val);
-    } catch {
-      // Algunas propiedades no se pueden asignar inline.
+function fixModernColors(root, doc = document) {
+  const win = doc.defaultView || window;
+  const nodes = root.querySelectorAll("*");
+  for (const node of [root, ...nodes]) {
+    if (node.nodeType !== 1) continue;
+    const cs = win.getComputedStyle(node);
+    for (const prop of COLOR_PROPS) {
+      const val = cs.getPropertyValue(prop);
+      if (!val || !/oklch|lab\(|color\(/.test(val)) continue;
+      node.style.setProperty(prop, toSafeCssColor(val));
     }
   }
-
-  cloneEl.removeAttribute("class");
-
-  const srcKids = sourceEl.children;
-  const cloneKids = cloneEl.children;
-  for (let i = 0; i < srcKids.length; i += 1) {
-    inlineAllComputedStyles(srcKids[i], cloneKids[i], getComputedStyleFn);
-  }
-}
-
-function prepareCloneForPdf(sourceEl, cloneRoot, clonedDoc) {
-  cloneRoot.classList.remove("hidden");
-  cloneRoot.style.setProperty("display", "block", "important");
-  cloneRoot.style.visibility = "visible";
-  cloneRoot.style.opacity = "1";
-  cloneRoot.style.background = "#ffffff";
-  cloneRoot.style.color = "#18181b";
-  cloneRoot.style.position = "static";
-  cloneRoot.style.left = "auto";
-  cloneRoot.style.top = "auto";
-  cloneRoot.style.zIndex = "auto";
-  cloneRoot.style.pointerEvents = "auto";
-
-  inlineAllComputedStyles(sourceEl, cloneRoot, (node) => window.getComputedStyle(node));
-
-  cloneRoot.querySelectorAll("*").forEach((node) => {
-    node.style.visibility = "visible";
-    node.style.opacity = "1";
-  });
-
-  clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => node.remove());
 }
 
 function waitForNextFrame(count = 2) {
@@ -135,30 +93,28 @@ async function waitForImages(root) {
   );
 }
 
-function revealPrintAreaForCapture(el) {
-  el.classList.remove("hidden");
-  el.classList.add("block");
-  Object.assign(el.style, {
-    position: "fixed",
-    left: "0",
-    top: "0",
-    width: "210mm",
-    maxWidth: "210mm",
-    background: "#ffffff",
-    color: "#18181b",
-    zIndex: "2147483646",
-    visibility: "visible",
-    opacity: "1",
-    pointerEvents: "none",
-    overflow: "visible",
-    display: "block",
-  });
+function removeCaptureHost() {
+  document.getElementById(PDF_CAPTURE_HOST_ID)?.remove();
 }
 
-function restorePrintArea(el, prevClass, prevStyle) {
-  el.className = prevClass;
-  if (prevStyle == null) el.removeAttribute("style");
-  else el.setAttribute("style", prevStyle);
+/** Clona el área de impresión en un contenedor estático (evita recortes en móvil). */
+function createCaptureHost(sourceEl) {
+  removeCaptureHost();
+
+  const host = document.createElement("div");
+  host.id = PDF_CAPTURE_HOST_ID;
+  host.setAttribute("aria-hidden", "true");
+
+  const clone = sourceEl.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.classList.remove("hidden");
+  clone.classList.add("presupuesto-print-clone", "block");
+
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  window.scrollTo(0, 0);
+
+  return host;
 }
 
 function downloadBlob(blob, filename) {
@@ -191,29 +147,25 @@ export async function generarPresupuestoPdfBlob(elementId, filename = "presupues
   if (pdfGenerationLock) return pdfGenerationLock;
 
   pdfGenerationLock = (async () => {
-    const el = document.getElementById(elementId);
-    if (!el) throw new Error("No se encontró el área de impresión del presupuesto");
+    const sourceEl = document.getElementById(elementId);
+    if (!sourceEl) throw new Error("No se encontró el área de impresión del presupuesto");
 
-    const html2pdf = (await import("html2pdf.js")).default;
-
-    const prevClass = el.className;
-    const prevStyle = el.getAttribute("style");
-
-    revealPrintAreaForCapture(el);
+    const host = createCaptureHost(sourceEl);
 
     try {
       await waitForNextFrame(2);
-      await waitForImages(el);
+      await waitForImages(host);
+      fixModernColors(host);
 
-      const captureWidth = Math.max(el.scrollWidth, el.offsetWidth, 794);
-      const captureHeight = Math.max(el.scrollHeight, el.offsetHeight, 200);
-
+      const captureHeight = Math.max(host.scrollHeight, host.offsetHeight, 200);
       if (captureHeight < 100) {
         throw new Error("El presupuesto no tiene contenido visible para generar el PDF");
       }
 
+      const html2pdf = (await import("html2pdf.js")).default;
+
       const opt = {
-        margin: [0.2, 0.35, 0.2, 0.35],
+        margin: [0.47, 0.47, 0.87, 0.47],
         filename,
         image: { type: "jpeg", quality: 0.96 },
         html2canvas: {
@@ -222,29 +174,24 @@ export async function generarPresupuestoPdfBlob(elementId, filename = "presupues
           allowTaint: false,
           logging: false,
           backgroundColor: "#ffffff",
-          width: captureWidth,
-          height: captureHeight,
-          windowWidth: captureWidth,
-          windowHeight: captureHeight,
           scrollX: 0,
           scrollY: 0,
-          onclone: (clonedDoc) => {
-            const cloneRoot = clonedDoc.getElementById(elementId);
-            if (!cloneRoot) return;
-            prepareCloneForPdf(el, cloneRoot, clonedDoc);
+          onclone: (clonedDoc, clonedEl) => {
+            const root = clonedEl || clonedDoc.getElementById(PDF_CAPTURE_HOST_ID);
+            if (root) fixModernColors(root, clonedDoc);
           },
         },
         jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
         pagebreak: { mode: ["css", "legacy"] },
       };
 
-      const blob = await html2pdf().set(opt).from(el).outputPdf("blob");
+      const blob = await html2pdf().set(opt).from(host).outputPdf("blob");
       if (pdfBlobPareceVacio(blob)) {
         throw new Error("El PDF generado está vacío");
       }
       return blob;
     } finally {
-      restorePrintArea(el, prevClass, prevStyle);
+      removeCaptureHost();
     }
   })();
 

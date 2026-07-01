@@ -75,3 +75,65 @@ body {
     background: #fff !important;
   }
 }
+
+/* Captura PDF (WhatsApp): mismo ancho y espaciado que la impresión */
+#presupuesto-pdf-capture-host {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 210mm;
+  max-width: 210mm;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #18181b;
+  z-index: 2147483646;
+  pointer-events: none;
+  overflow: visible;
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+#presupuesto-pdf-capture-host,
+#presupuesto-pdf-capture-host * {
+  visibility: visible !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone {
+  display: block !important;
+  position: static !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone > div {
+  padding: 0.75rem !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone > div > div {
+  padding: 1.25rem !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone img {
+  height: 7rem !important;
+  width: 7rem !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone table {
+  font-size: 13px !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone thead tr {
+  background: #f4f4f5 !important;
+  font-size: 9px !important;
+}
+
+#presupuesto-pdf-capture-host .presupuesto-print-clone th,
+#presupuesto-pdf-capture-host .presupuesto-print-clone td {
+  vertical-align: top !important;
+}
