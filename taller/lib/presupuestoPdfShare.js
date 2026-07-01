@@ -7,6 +7,11 @@ function safeFilename(name) {
   return base || "presupuesto";
 }
 
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 let colorCanvas;
 let colorCtx;
 
@@ -94,6 +99,28 @@ function prepareCloneForPdf(sourceEl, cloneEl) {
   }
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function openWhatsApp(text) {
+  const waText = encodeURIComponent(text);
+  const mobile = isMobileDevice();
+  const waUrl = mobile
+    ? `https://api.whatsapp.com/send?text=${waText}`
+    : `https://wa.me/?text=${waText}`;
+
+  window.location.assign(waUrl);
+}
+
 /**
  * Genera un PDF del área de impresión del presupuesto (mismo contenido que Imprimir).
  */
@@ -146,7 +173,8 @@ export async function generarPresupuestoPdfBlob(elementId, filename = "presupues
 }
 
 /**
- * Comparte el presupuesto en PDF (Web Share API) o descarga y abre WhatsApp.
+ * Comparte el presupuesto en PDF vía WhatsApp.
+ * En móvil: intenta compartir el archivo (elegí WhatsApp) o abre WhatsApp directo.
  */
 export async function compartirPresupuestoPorWhatsApp({ elementId, clienteNombre }) {
   const nom = String(clienteNombre ?? "").trim() || "cliente";
@@ -154,26 +182,35 @@ export async function compartirPresupuestoPorWhatsApp({ elementId, clienteNombre
   const blob = await generarPresupuestoPdfBlob(elementId, filename);
   const file = new File([blob], filename, { type: "application/pdf" });
   const text = `Presupuesto — ${nom}`;
+  const mobile = isMobileDevice();
 
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-    try {
-      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Presupuesto", text });
+  if (!mobile && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    const payloads = [
+      { files: [file], title: "Presupuesto", text },
+      { files: [file], title: "Presupuesto" },
+    ];
+
+    for (const shareData of payloads) {
+      try {
+        if (navigator.canShare && !navigator.canShare(shareData)) continue;
+        await navigator.share(shareData);
         return { ok: true, mode: "share" };
+      } catch (e) {
+        if (e?.name === "AbortError") return { ok: false, cancelled: true };
       }
+    }
+  }
+
+  if (mobile && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share({ files: [file], title: "Presupuesto", text });
+      return { ok: true, mode: "share" };
     } catch (e) {
       if (e?.name === "AbortError") return { ok: false, cancelled: true };
     }
   }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  const waText = encodeURIComponent(`${text}\n(adjuntá el PDF descargado)`);
-  window.open(`https://wa.me/?text=${waText}`, "_blank", "noopener,noreferrer");
-  return { ok: true, mode: "download-wa" };
+  downloadBlob(blob, filename);
+  openWhatsApp(`${text}\n(adjuntá el PDF descargado)`);
+  return { ok: true, mode: mobile ? "download-wa-mobile" : "download-wa" };
 }

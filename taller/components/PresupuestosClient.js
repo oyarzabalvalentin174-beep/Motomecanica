@@ -459,7 +459,12 @@ export default function PresupuestosClient({
       });
       if (res.cancelled) return;
       if (res.mode === "share") {
-        setBanner({ type: "ok", text: "PDF listo para compartir." });
+        setBanner({ type: "ok", text: "Elegí WhatsApp en el menú para enviar el PDF." });
+      } else if (res.mode === "download-wa-mobile") {
+        setBanner({
+          type: "ok",
+          text: "PDF descargado. Se abrió WhatsApp: adjuntá el archivo desde Descargas.",
+        });
       } else {
         setBanner({
           type: "ok",
@@ -1172,9 +1177,14 @@ export default function PresupuestosClient({
                 style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-600">
-                  Presupuesto
-                </p>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-10 gap-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-600">
+                    Presupuesto
+                  </p>
+                  <p className="text-sm font-semibold tabular-nums text-zinc-800">
+                    {fechaElaboracion ? fmtDateEs(fechaElaboracion) : fmtDateEs(todayInput())}
+                  </p>
+                </div>
                 <h2 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900">{taller.nombre}</h2>
                 <p className="mt-1 text-xs text-zinc-700">
                   Portugal esquina Uruguay, General Deheza, Cordoba
@@ -1187,23 +1197,13 @@ export default function PresupuestosClient({
             <div className="mt-5 border border-zinc-900 bg-white p-4 text-sm leading-relaxed print:border-zinc-800 print:p-3">
               <div
                 className={
-                  datosVehiculo.trim() || km.trim()
-                    ? "grid gap-4 sm:grid-cols-3 sm:gap-x-8"
-                    : "grid gap-3 sm:grid-cols-2"
+                  datosVehiculo.trim() || km.trim() ? "grid gap-4 sm:grid-cols-2 sm:gap-x-10" : "grid gap-3"
                 }
               >
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Cliente</p>
                   <p className="mt-1 text-base font-semibold text-zinc-900">
                     {nombrePersona.trim() || "—"}
-                  </p>
-                </div>
-                <div className="min-w-0 sm:text-right">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                    Fecha de elaboración
-                  </p>
-                  <p className="mt-1 text-base font-semibold tabular-nums text-zinc-900">
-                    {fechaElaboracion ? fmtDateEs(fechaElaboracion) : fmtDateEs(todayInput())}
                   </p>
                 </div>
                 {datosVehiculo.trim() || km.trim() ? (

@@ -170,7 +170,7 @@ export default async function Home() {
         <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-6">
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-900/5 sm:p-5">
               <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
-                Atajos operativos
+                Atajos
               </h2>
               <p className="mt-1 text-sm text-zinc-600">
                 Accesos rapidos para no perder tiempo navegando.
