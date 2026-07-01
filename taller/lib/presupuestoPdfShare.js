@@ -32,59 +32,45 @@ function toSafeCssColor(value) {
   }
 }
 
-const INLINE_PROPS = [
+const COLOR_PROPS = new Set([
   "color",
-  "backgroundColor",
-  "borderTopColor",
-  "borderRightColor",
-  "borderBottomColor",
-  "borderLeftColor",
-  "borderTopWidth",
-  "borderRightWidth",
-  "borderBottomWidth",
-  "borderLeftWidth",
-  "borderTopStyle",
-  "borderRightStyle",
-  "borderBottomStyle",
-  "borderLeftStyle",
-  "fontSize",
-  "fontWeight",
-  "fontFamily",
-  "lineHeight",
-  "textAlign",
-  "verticalAlign",
-  "paddingTop",
-  "paddingRight",
-  "paddingBottom",
-  "paddingLeft",
-  "marginTop",
-  "marginRight",
-  "marginBottom",
-  "marginLeft",
-  "display",
-  "width",
-  "height",
-  "minHeight",
-  "maxWidth",
-  "whiteSpace",
-  "letterSpacing",
-  "textTransform",
-  "objectFit",
-];
+  "background-color",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "outline-color",
+  "text-decoration-color",
+  "column-rule-color",
+  "caret-color",
+  "fill",
+  "stroke",
+]);
 
-function kebabCase(prop) {
-  return prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+function sanitizeCSSValue(prop, value) {
+  const v = String(value ?? "").trim();
+  if (!v) return v;
+  if (COLOR_PROPS.has(prop) || /oklch|lab\(|color\(/.test(v)) {
+    return toSafeCssColor(v);
+  }
+  return v;
 }
 
-function prepareCloneForPdf(sourceEl, cloneEl) {
+/** Copia todos los estilos calculados al clon (layout + colores seguros para html2canvas). */
+function inlineAllComputedStyles(sourceEl, cloneEl, getComputedStyleFn) {
   if (!sourceEl || !cloneEl || sourceEl.nodeType !== 1 || cloneEl.nodeType !== 1) return;
 
-  const cs = window.getComputedStyle(sourceEl);
-  for (const prop of INLINE_PROPS) {
-    const raw = cs.getPropertyValue(kebabCase(prop)) || cs[prop];
-    if (!raw) continue;
-    const val = prop.toLowerCase().includes("color") ? toSafeCssColor(raw) : raw;
-    cloneEl.style.setProperty(kebabCase(prop), val);
+  const cs = getComputedStyleFn(sourceEl);
+  for (let i = 0; i < cs.length; i += 1) {
+    const prop = cs[i];
+    let val = cs.getPropertyValue(prop);
+    if (!val) continue;
+    val = sanitizeCSSValue(prop, val);
+    try {
+      cloneEl.style.setProperty(prop, val);
+    } catch {
+      // Algunas propiedades no se pueden asignar inline.
+    }
   }
 
   cloneEl.removeAttribute("class");
@@ -92,8 +78,87 @@ function prepareCloneForPdf(sourceEl, cloneEl) {
   const srcKids = sourceEl.children;
   const cloneKids = cloneEl.children;
   for (let i = 0; i < srcKids.length; i += 1) {
-    prepareCloneForPdf(srcKids[i], cloneKids[i]);
+    inlineAllComputedStyles(srcKids[i], cloneKids[i], getComputedStyleFn);
   }
+}
+
+function prepareCloneForPdf(sourceEl, cloneRoot, clonedDoc) {
+  cloneRoot.classList.remove("hidden");
+  cloneRoot.style.setProperty("display", "block", "important");
+  cloneRoot.style.visibility = "visible";
+  cloneRoot.style.opacity = "1";
+  cloneRoot.style.background = "#ffffff";
+  cloneRoot.style.color = "#18181b";
+  cloneRoot.style.position = "static";
+  cloneRoot.style.left = "auto";
+  cloneRoot.style.top = "auto";
+  cloneRoot.style.zIndex = "auto";
+  cloneRoot.style.pointerEvents = "auto";
+
+  inlineAllComputedStyles(sourceEl, cloneRoot, (node) => window.getComputedStyle(node));
+
+  cloneRoot.querySelectorAll("*").forEach((node) => {
+    node.style.visibility = "visible";
+    node.style.opacity = "1";
+  });
+
+  clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => node.remove());
+}
+
+function waitForNextFrame(count = 2) {
+  return new Promise((resolve) => {
+    let left = count;
+    const step = () => {
+      left -= 1;
+      if (left <= 0) resolve();
+      else requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+async function waitForImages(root) {
+  const imgs = root.querySelectorAll("img");
+  await Promise.all(
+    [...imgs].map(
+      (img) =>
+        new Promise((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve();
+            return;
+          }
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+        }),
+    ),
+  );
+}
+
+function revealPrintAreaForCapture(el) {
+  el.classList.remove("hidden");
+  el.classList.add("block");
+  Object.assign(el.style, {
+    position: "fixed",
+    left: "0",
+    top: "0",
+    width: "210mm",
+    maxWidth: "210mm",
+    background: "#ffffff",
+    color: "#18181b",
+    zIndex: "2147483646",
+    visibility: "visible",
+    opacity: "1",
+    pointerEvents: "none",
+    overflow: "visible",
+    display: "block",
+  });
+}
+
+function restorePrintArea(el, prevClass, prevStyle) {
+  el.className = prevClass;
+  if (prevStyle == null) el.removeAttribute("style");
+  else el.setAttribute("style", prevStyle);
 }
 
 function downloadBlob(blob, filename) {
@@ -108,6 +173,13 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** PDF vacío suele pesar menos de ~2 KB. */
+function pdfBlobPareceVacio(blob) {
+  return !blob || blob.size < 2048;
+}
+
+let pdfGenerationLock = null;
+
 /**
  * Genera un PDF del área de impresión del presupuesto (mismo contenido que Imprimir).
  */
@@ -116,46 +188,70 @@ export async function generarPresupuestoPdfBlob(elementId, filename = "presupues
     throw new Error("Solo disponible en el navegador");
   }
 
-  const el = document.getElementById(elementId);
-  if (!el) throw new Error("No se encontró el área de impresión del presupuesto");
+  if (pdfGenerationLock) return pdfGenerationLock;
 
-  const html2pdf = (await import("html2pdf.js")).default;
+  pdfGenerationLock = (async () => {
+    const el = document.getElementById(elementId);
+    if (!el) throw new Error("No se encontró el área de impresión del presupuesto");
 
-  const prevClass = el.className;
-  const prevStyle = el.getAttribute("style");
+    const html2pdf = (await import("html2pdf.js")).default;
 
-  el.classList.remove("hidden");
-  el.classList.add("block");
-  el.style.cssText =
-    "position:fixed;left:-12000px;top:0;width:210mm;max-width:210mm;background:#ffffff;color:#18181b;z-index:-1;pointer-events:none;";
+    const prevClass = el.className;
+    const prevStyle = el.getAttribute("style");
+
+    revealPrintAreaForCapture(el);
+
+    try {
+      await waitForNextFrame(2);
+      await waitForImages(el);
+
+      const captureWidth = Math.max(el.scrollWidth, el.offsetWidth, 794);
+      const captureHeight = Math.max(el.scrollHeight, el.offsetHeight, 200);
+
+      if (captureHeight < 100) {
+        throw new Error("El presupuesto no tiene contenido visible para generar el PDF");
+      }
+
+      const opt = {
+        margin: [0.2, 0.35, 0.2, 0.35],
+        filename,
+        image: { type: "jpeg", quality: 0.96 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          backgroundColor: "#ffffff",
+          width: captureWidth,
+          height: captureHeight,
+          windowWidth: captureWidth,
+          windowHeight: captureHeight,
+          scrollX: 0,
+          scrollY: 0,
+          onclone: (clonedDoc) => {
+            const cloneRoot = clonedDoc.getElementById(elementId);
+            if (!cloneRoot) return;
+            prepareCloneForPdf(el, cloneRoot, clonedDoc);
+          },
+        },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] },
+      };
+
+      const blob = await html2pdf().set(opt).from(el).outputPdf("blob");
+      if (pdfBlobPareceVacio(blob)) {
+        throw new Error("El PDF generado está vacío");
+      }
+      return blob;
+    } finally {
+      restorePrintArea(el, prevClass, prevStyle);
+    }
+  })();
 
   try {
-    const opt = {
-      margin: [0.2, 0.35, 0.2, 0.35],
-      filename,
-      image: { type: "jpeg", quality: 0.96 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-        onclone: (clonedDoc) => {
-          const cloneRoot = clonedDoc.getElementById(elementId);
-          if (!cloneRoot) return;
-          prepareCloneForPdf(el, cloneRoot);
-          cloneRoot.style.background = "#ffffff";
-          cloneRoot.style.color = "#18181b";
-          clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => node.remove());
-        },
-      },
-      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "legacy"] },
-    };
-    return await html2pdf().set(opt).from(el).outputPdf("blob");
+    return await pdfGenerationLock;
   } finally {
-    el.className = prevClass;
-    if (prevStyle == null) el.removeAttribute("style");
-    else el.setAttribute("style", prevStyle);
+    pdfGenerationLock = null;
   }
 }
 
@@ -205,9 +301,18 @@ async function compartirPdfConSistema(file) {
 export async function compartirPresupuestoPorWhatsApp({ elementId, clienteNombre, pdfPromise }) {
   const nom = String(clienteNombre ?? "").trim() || "cliente";
   const filename = `presupuesto_${safeFilename(nom)}.pdf`;
-  const blob = pdfPromise
-    ? await pdfPromise
-    : await generarPresupuestoPdfBlob(elementId, filename);
+
+  let blob;
+  try {
+    blob = pdfPromise ? await pdfPromise : await generarPresupuestoPdfBlob(elementId, filename);
+  } catch {
+    blob = await generarPresupuestoPdfBlob(elementId, filename);
+  }
+
+  if (pdfBlobPareceVacio(blob)) {
+    blob = await generarPresupuestoPdfBlob(elementId, filename);
+  }
+
   const file = buildPdfFile(blob, filename);
   const mobile = isMobileDevice();
 
