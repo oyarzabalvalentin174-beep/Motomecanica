@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
-import { compartirPresupuestoPorWhatsApp } from "@/lib/presupuestoPdfShare";
+import {
+  compartirPresupuestoPorWhatsApp,
+  iniciarGeneracionPdfPresupuesto,
+} from "@/lib/presupuestoPdfShare";
 import PresupuestoExcelImportModal from "@/components/PresupuestoExcelImportModal";
 
 function parseQty(s) {
@@ -194,6 +197,7 @@ export default function PresupuestosClient({
   const [fechaEntregaComprometida, setFechaEntregaComprometida] = useState("");
   const [fechaElaboracion, setFechaElaboracion] = useState(todayInput);
   const [sharingPdf, setSharingPdf] = useState(false);
+  const pdfSharePromiseRef = useRef(null);
   const [entregas, setEntregas] = useState([]);
   const [nuevaEntregaMonto, setNuevaEntregaMonto] = useState("");
   const [rows, setRows] = useState([]);
@@ -448,36 +452,6 @@ export default function PresupuestosClient({
     window.print();
   };
 
-  const compartirWhatsApp = async () => {
-    if (!puedeImprimir || sharingPdf) return;
-    setSharingPdf(true);
-    setBanner(null);
-    try {
-      const res = await compartirPresupuestoPorWhatsApp({
-        elementId: "presupuesto-print-area",
-        clienteNombre: nombrePersona,
-      });
-      if (res.cancelled) return;
-      if (res.mode === "share") {
-        setBanner({ type: "ok", text: "Elegí WhatsApp en el menú para enviar el PDF." });
-      } else if (res.mode === "download-wa-mobile") {
-        setBanner({
-          type: "ok",
-          text: "PDF descargado. Se abrió WhatsApp: adjuntá el archivo desde Descargas.",
-        });
-      } else {
-        setBanner({
-          type: "ok",
-          text: "PDF descargado. En WhatsApp adjuntá el archivo desde tu dispositivo.",
-        });
-      }
-    } catch (err) {
-      setBanner({ type: "error", text: err?.message || "No se pudo generar el PDF." });
-    } finally {
-      setSharingPdf(false);
-    }
-  };
-
   const guardarNuevaEntrega = async () => {
     if (!selectedId) {
       setBanner({
@@ -559,6 +533,39 @@ export default function PresupuestosClient({
   const puedeImprimir =
     Boolean(nombrePersona.trim()) &&
     rows.some((r) => String(r.parametro || "").trim().length > 0);
+
+  const prepararPdfWhatsApp = useCallback(() => {
+    if (!puedeImprimir) return;
+    pdfSharePromiseRef.current = iniciarGeneracionPdfPresupuesto(
+      "presupuesto-print-area",
+      nombrePersona,
+    );
+  }, [nombrePersona, puedeImprimir]);
+
+  const compartirWhatsApp = async () => {
+    if (!puedeImprimir || sharingPdf) return;
+    setSharingPdf(true);
+    setBanner(null);
+    const pdfPromise = pdfSharePromiseRef.current;
+    pdfSharePromiseRef.current = null;
+    try {
+      const res = await compartirPresupuestoPorWhatsApp({
+        elementId: "presupuesto-print-area",
+        clienteNombre: nombrePersona,
+        pdfPromise,
+      });
+      if (res.cancelled) return;
+      if (res.mode === "share") {
+        setBanner({ type: "ok", text: "Elegí WhatsApp: el PDF ya va adjunto." });
+      } else {
+        setBanner({ type: "ok", text: "PDF descargado en tu dispositivo." });
+      }
+    } catch (err) {
+      setBanner({ type: "error", text: err?.message || "No se pudo compartir el PDF." });
+    } finally {
+      setSharingPdf(false);
+    }
+  };
 
   const listaEsRecortada = !busqueda.trim() && lista.length > 40;
   const hayListaSistema = lista.length > 0;
@@ -797,6 +804,7 @@ export default function PresupuestosClient({
                       </button>
                       <button
                         type="button"
+                        onPointerDown={prepararPdfWhatsApp}
                         onClick={() => void compartirWhatsApp()}
                         disabled={!puedeImprimir || sharingPdf}
                         className={btnWhatsApp}
