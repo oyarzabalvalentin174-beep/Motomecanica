@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
+import { compartirPresupuestoPorWhatsApp } from "@/lib/presupuestoPdfShare";
 import PresupuestoExcelImportModal from "@/components/PresupuestoExcelImportModal";
 
 function parseQty(s) {
@@ -63,10 +64,15 @@ function dateToInput(raw) {
   return d.toISOString().slice(0, 10);
 }
 
+function todayInput() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
+
 function headerExtrasPayload({
   observaciones,
   datosVehiculo,
   km,
+  fechaElaboracion,
   fechaEntregaEstimada,
   fechaEntregaComprometida,
 }) {
@@ -81,6 +87,7 @@ function headerExtrasPayload({
     observaciones: String(observaciones ?? "").trim() || null,
     datos_vehiculo: String(datosVehiculo ?? "").trim() || null,
     km: kmNum,
+    fecha_elaboracion: fechaElaboracion || todayInput(),
     fecha_entrega_estimada: fechaEntregaEstimada || null,
     fecha_entrega_comprometida: fechaEntregaComprometida || null,
   };
@@ -185,6 +192,8 @@ export default function PresupuestosClient({
   const [km, setKm] = useState("");
   const [fechaEntregaEstimada, setFechaEntregaEstimada] = useState("");
   const [fechaEntregaComprometida, setFechaEntregaComprometida] = useState("");
+  const [fechaElaboracion, setFechaElaboracion] = useState(todayInput);
+  const [sharingPdf, setSharingPdf] = useState(false);
   const [entregas, setEntregas] = useState([]);
   const [nuevaEntregaMonto, setNuevaEntregaMonto] = useState("");
   const [rows, setRows] = useState([]);
@@ -214,6 +223,9 @@ export default function PresupuestosClient({
     setKm(d.km != null && String(d.km).trim() !== "" ? String(d.km) : "");
     setFechaEntregaEstimada(dateToInput(d.fecha_entrega_estimada));
     setFechaEntregaComprometida(dateToInput(d.fecha_entrega_comprometida));
+    setFechaElaboracion(
+      dateToInput(d.fecha_elaboracion) || dateToInput(d.fecha_actualizacion) || todayInput(),
+    );
     const entregasRaw = Array.isArray(d.entregas) ? d.entregas : [];
     setEntregas(
       entregasRaw.map((e, i) => ({
@@ -295,6 +307,7 @@ export default function PresupuestosClient({
     setKm("");
     setFechaEntregaEstimada("");
     setFechaEntregaComprometida("");
+    setFechaElaboracion(todayInput());
     setEntregas([]);
     setNuevaEntregaMonto("");
     setRows([emptyLine(0)]);
@@ -344,6 +357,7 @@ export default function PresupuestosClient({
       observaciones,
       datosVehiculo,
       km,
+      fechaElaboracion,
       fechaEntregaEstimada,
       fechaEntregaComprometida,
     });
@@ -391,6 +405,7 @@ export default function PresupuestosClient({
           observaciones,
           datosVehiculo,
           km,
+          fechaElaboracion,
           fechaEntregaEstimada,
           fechaEntregaComprometida,
         }),
@@ -433,6 +448,31 @@ export default function PresupuestosClient({
     window.print();
   };
 
+  const compartirWhatsApp = async () => {
+    if (!puedeImprimir || sharingPdf) return;
+    setSharingPdf(true);
+    setBanner(null);
+    try {
+      const res = await compartirPresupuestoPorWhatsApp({
+        elementId: "presupuesto-print-area",
+        clienteNombre: nombrePersona,
+      });
+      if (res.cancelled) return;
+      if (res.mode === "share") {
+        setBanner({ type: "ok", text: "PDF listo para compartir." });
+      } else {
+        setBanner({
+          type: "ok",
+          text: "PDF descargado. En WhatsApp adjuntá el archivo desde tu dispositivo.",
+        });
+      }
+    } catch (err) {
+      setBanner({ type: "error", text: err?.message || "No se pudo generar el PDF." });
+    } finally {
+      setSharingPdf(false);
+    }
+  };
+
   const guardarNuevaEntrega = async () => {
     if (!selectedId) {
       setBanner({
@@ -455,6 +495,7 @@ export default function PresupuestosClient({
           observaciones,
           datosVehiculo,
           km,
+          fechaElaboracion,
           fechaEntregaEstimada,
           fechaEntregaComprometida,
         }),
@@ -479,6 +520,7 @@ export default function PresupuestosClient({
     setKm("");
     setFechaEntregaEstimada("");
     setFechaEntregaComprometida("");
+    setFechaElaboracion(todayInput());
     setEntregas([]);
     setNuevaEntregaMonto("");
     setRows([]);
@@ -486,19 +528,22 @@ export default function PresupuestosClient({
   }, [router]);
 
   const cardSurface =
-    "rounded-2xl border border-zinc-300/45 bg-zinc-50/90 p-4 shadow-sm sm:p-5";
+    "rounded-2xl border border-zinc-300/50 bg-zinc-100/92 p-4 shadow-sm sm:p-5";
 
   const inputCell =
-    "h-11 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-3 py-2 text-base leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10";
+    "h-11 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-3 py-2 text-base leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10";
 
   const inputCellCompact =
-    "h-10 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-2 py-1.5 text-sm leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10 tabular-nums";
+    "h-10 w-full rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-2 py-1.5 text-sm leading-snug text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10 tabular-nums";
 
   const notesCell =
-    "min-h-[5rem] max-h-56 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-3 py-2.5 text-base leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10";
+    "min-h-[5rem] max-h-56 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-3 py-2.5 text-base leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10";
 
   const btnSecundario =
-    "min-h-11 rounded-lg border border-zinc-300/60 bg-zinc-100/80 px-4 py-2 text-base font-semibold text-zinc-800 transition hover:bg-zinc-200/70";
+    "min-h-11 rounded-lg border border-zinc-300/60 bg-zinc-100/85 px-4 py-2 text-base font-semibold text-zinc-800 transition hover:bg-zinc-200/70";
+
+  const btnWhatsApp =
+    "min-h-11 rounded-lg border border-emerald-500/45 bg-emerald-600/90 px-4 py-2 text-base font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50";
 
   const btnPrimario =
     "min-h-11 rounded-lg bg-gradient-to-r from-emerald-700/90 to-emerald-600/90 px-4 py-2 text-base font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-emerald-500";
@@ -649,7 +694,7 @@ export default function PresupuestosClient({
                     Importar Excel
                   </button>
                 </div>
-                <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-zinc-300/40 bg-zinc-100/50 p-2">
+                <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-zinc-300/45 bg-zinc-100/70 p-2">
                   {!hayListaSistema ? (
                     <p className="px-2 py-8 text-center text-base text-zinc-500">
                       Todavía no hay presupuestos. Creá el primero con «Nuevo presupuesto».
@@ -745,6 +790,14 @@ export default function PresupuestosClient({
                       >
                         Imprimir
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void compartirWhatsApp()}
+                        disabled={!puedeImprimir || sharingPdf}
+                        className={btnWhatsApp}
+                      >
+                        {sharingPdf ? "Generando PDF…" : "WhatsApp PDF"}
+                      </button>
                       {selectedId ? (
                         <button type="button" onClick={eliminarPresupuesto} className={btnPeligro}>
                           Eliminar
@@ -755,6 +808,17 @@ export default function PresupuestosClient({
 
                   <section className={cardSurface}>
                     <h2 className="text-base font-semibold text-zinc-700">Cliente y notas</h2>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="block text-base font-semibold text-zinc-600">
+                        Fecha de elaboración
+                        <input
+                          type="date"
+                          value={fechaElaboracion}
+                          onChange={(e) => setFechaElaboracion(e.target.value)}
+                          className={`mt-1 ${inputCell}`}
+                        />
+                      </label>
+                    </div>
                     <label className="mt-3 block text-base font-semibold text-zinc-600">
                       Nombre del cliente
                       <input
@@ -776,7 +840,7 @@ export default function PresupuestosClient({
                       />
                     </label>
 
-                    <details className="group mt-4 rounded-xl border border-zinc-300/40 bg-zinc-100/40 open:border-zinc-300/55 open:bg-zinc-50/80">
+                    <details className="group mt-4 rounded-xl border border-zinc-300/45 bg-zinc-100/65 open:border-zinc-300/55 open:bg-zinc-50/90">
                       <summary className="cursor-pointer list-none px-4 py-3 text-base font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
                         <span className="flex items-center justify-between gap-2">
                           <span>Vehículo y fechas de entrega (opcional)</span>
@@ -829,7 +893,7 @@ export default function PresupuestosClient({
                   </section>
 
                   <section className={`${cardSurface} overflow-hidden p-0`}>
-                    <div className="border-b border-zinc-300/40 bg-zinc-100/60 px-4 py-3 sm:px-5">
+                    <div className="border-b border-zinc-300/40 bg-zinc-100/75 px-4 py-3 sm:px-5">
                       <h2 className="text-base font-semibold text-zinc-700">Ítems del presupuesto</h2>
                       <p className="mt-1 text-sm text-zinc-500">
                         Completá concepto, cantidad y precio. El subtotal se calcula solo.
@@ -838,15 +902,18 @@ export default function PresupuestosClient({
 
                     <div className="p-0 sm:p-0">
                       {rows.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-                          <p className="max-w-sm text-base text-zinc-500">
-                            Agregá líneas con «+ Ítem» arriba (mano de obra, repuestos, etc.).
+                        <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+                          <p className="max-w-sm text-base text-zinc-600">
+                            Agregá líneas de mano de obra, repuestos, etc.
                           </p>
+                          <button type="button" onClick={agregarLinea} className={btnSecundario}>
+                            + Agregar ítem
+                          </button>
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full min-w-[52rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
-                            <thead className="border-b border-zinc-300/40 bg-zinc-100/70 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
+                            <thead className="border-b border-zinc-300/40 bg-zinc-100/80 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
                               <tr>
                                 <th className="w-10 whitespace-nowrap px-2 py-2.5 text-center font-medium text-zinc-500 sm:w-12">
                                   #
@@ -874,10 +941,10 @@ export default function PresupuestosClient({
                                 return (
                                   <tr
                                     key={row.key}
-                                    className={`border-b border-zinc-300/30 align-top ${idx % 2 === 1 ? "bg-zinc-100/40" : "bg-zinc-50/50"}`}
+                                    className={`border-b border-zinc-300/30 align-top ${idx % 2 === 1 ? "bg-zinc-100/50" : "bg-zinc-50/80"}`}
                                   >
                                     <td className="px-2 py-2 text-center align-top">
-                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-200/50 text-sm font-bold tabular-nums text-zinc-600">
+                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-200/55 text-sm font-bold tabular-nums text-zinc-600">
                                         {idx + 1}
                                       </span>
                                     </td>
@@ -916,7 +983,7 @@ export default function PresupuestosClient({
                                     </td>
                                     <td className="px-2 py-2 align-top">
                                       <div
-                                        className={`flex min-h-10 items-center justify-end rounded-lg border border-zinc-300/35 bg-zinc-100/60 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
+                                        className={`flex min-h-10 items-center justify-end rounded-lg border border-zinc-300/35 bg-zinc-100/70 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
                                       >
                                         ${fmtMoney(tieneConcepto ? sub : 0)}
                                       </div>
@@ -928,7 +995,7 @@ export default function PresupuestosClient({
                                           actualizarCampo(row.key, "notas", e.target.value)
                                         }
                                         rows={2}
-                                        className="min-h-[3.25rem] max-h-36 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/70 px-2 py-2 text-sm leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50 focus:ring-2 focus:ring-red-500/10"
+                                        className="min-h-[3.25rem] max-h-36 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-2 py-2 text-sm leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10"
                                         placeholder="Detalle"
                                       />
                                     </td>
@@ -947,12 +1014,25 @@ export default function PresupuestosClient({
                                 );
                               })}
                             </tbody>
+                            <tfoot>
+                              <tr>
+                                <td colSpan={7} className="border-t border-zinc-300/40 bg-zinc-100/65 px-3 py-3">
+                                  <button
+                                    type="button"
+                                    onClick={agregarLinea}
+                                    className="w-full rounded-lg border border-dashed border-zinc-400/50 bg-zinc-50/90 py-2.5 text-base font-semibold text-zinc-800 transition hover:border-emerald-500/50 hover:bg-emerald-50/80 hover:text-emerald-900"
+                                  >
+                                    + Agregar ítem
+                                  </button>
+                                </td>
+                              </tr>
+                            </tfoot>
                           </table>
                         </div>
                       )}
                     </div>
               {rows.length > 0 ? (
-                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-300/40 bg-zinc-100/50 px-4 py-3 sm:px-5">
+                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-300/40 bg-zinc-100/70 px-4 py-3 sm:px-5">
                   {montoSena > 0 ? (
                     <p className="text-base font-semibold tabular-nums text-zinc-700">
                       Saldo pendiente:{" "}
@@ -965,7 +1045,7 @@ export default function PresupuestosClient({
                   </p>
                 </div>
               ) : null}
-              <div className="border-t border-zinc-300/40 bg-zinc-50/70 px-4 py-4 sm:px-5">
+              <div className="border-t border-zinc-300/40 bg-zinc-50/85 px-4 py-4 sm:px-5">
                 <h3 className="text-base font-semibold text-zinc-700">Entregas</h3>
                 {entregas.length > 0 ? (
                   <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-300/40">
@@ -1108,14 +1188,22 @@ export default function PresupuestosClient({
               <div
                 className={
                   datosVehiculo.trim() || km.trim()
-                    ? "grid gap-4 sm:grid-cols-2 sm:gap-x-10"
-                    : "grid gap-3"
+                    ? "grid gap-4 sm:grid-cols-3 sm:gap-x-8"
+                    : "grid gap-3 sm:grid-cols-2"
                 }
               >
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Cliente</p>
                   <p className="mt-1 text-base font-semibold text-zinc-900">
                     {nombrePersona.trim() || "—"}
+                  </p>
+                </div>
+                <div className="min-w-0 sm:text-right">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                    Fecha de elaboración
+                  </p>
+                  <p className="mt-1 text-base font-semibold tabular-nums text-zinc-900">
+                    {fechaElaboracion ? fmtDateEs(fechaElaboracion) : fmtDateEs(todayInput())}
                   </p>
                 </div>
                 {datosVehiculo.trim() || km.trim() ? (

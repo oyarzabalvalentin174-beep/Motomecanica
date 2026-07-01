@@ -43,7 +43,7 @@ export default async function PresupuestosPage(props) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-200/60 via-zinc-100/90 to-zinc-200/50 print:bg-white">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-200/65 via-zinc-100/92 to-zinc-200/55 print:bg-white">
       <GlobalPageLoader />
       <UserPop />
       <AppSidebar active="presupuestos" />

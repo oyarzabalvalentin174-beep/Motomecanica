@@ -68,7 +68,7 @@ export async function fetchPresupuestoDetalle(id) {
     if (!String(e?.message ?? "").includes("spgetpresupuesto")) throw e;
   }
   const [row] = await query(
-    `SELECT p.id, p.nombre_persona, p.observaciones, p.fecha_actualizacion,
+    `SELECT p.id, p.nombre_persona, p.observaciones, p.fecha_actualizacion, p.fecha_elaboracion,
             p.datos_vehiculo, p.km, p.fecha_entrega_estimada, p.fecha_entrega_comprometida
      FROM app.presupuesto p WHERE p.id = $1`,
     [id],
