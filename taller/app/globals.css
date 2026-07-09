@@ -78,8 +78,8 @@ body {
 
 /* Captura PDF (WhatsApp): mismo ancho y espaciado que la impresión */
 #presupuesto-pdf-capture-host {
-  position: absolute;
-  left: 0;
+  position: fixed;
+  left: -10000px;
   top: 0;
   width: 210mm;
   max-width: 210mm;
@@ -87,7 +87,7 @@ body {
   padding: 0;
   background: #fff;
   color: #18181b;
-  z-index: 2147483646;
+  z-index: -1;
   pointer-events: none;
   overflow: visible;
   box-sizing: border-box;

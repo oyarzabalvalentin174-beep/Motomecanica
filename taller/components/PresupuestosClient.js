@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
 import {
+  buildPresupuestoPdfSnapshotFromClient,
   compartirPresupuestoPorWhatsApp,
   iniciarGeneracionPdfPresupuesto,
 } from "@/lib/presupuestoPdfShare";
@@ -534,13 +535,47 @@ export default function PresupuestosClient({
     Boolean(nombrePersona.trim()) &&
     rows.some((r) => String(r.parametro || "").trim().length > 0);
 
+  const presupuestoPdfSnapshot = useMemo(
+    () =>
+      buildPresupuestoPdfSnapshotFromClient({
+        taller,
+        logoPrintUrl,
+        nombrePersona,
+        datosVehiculo,
+        km,
+        observaciones,
+        fechaElaboracion,
+        fechaEntregaEstimada,
+        fechaEntregaComprometida,
+        rows,
+        totalGeneral,
+        montoSena,
+        saldoPendiente,
+        entregas,
+        origin: typeof window !== "undefined" ? window.location.origin : "",
+      }),
+    [
+      taller,
+      logoPrintUrl,
+      nombrePersona,
+      datosVehiculo,
+      km,
+      observaciones,
+      fechaElaboracion,
+      fechaEntregaEstimada,
+      fechaEntregaComprometida,
+      rows,
+      totalGeneral,
+      montoSena,
+      saldoPendiente,
+      entregas,
+    ],
+  );
+
   const prepararPdfWhatsApp = useCallback(() => {
     if (!puedeImprimir) return;
-    pdfSharePromiseRef.current = iniciarGeneracionPdfPresupuesto(
-      "presupuesto-print-area",
-      nombrePersona,
-    );
-  }, [nombrePersona, puedeImprimir]);
+    pdfSharePromiseRef.current = iniciarGeneracionPdfPresupuesto(presupuestoPdfSnapshot);
+  }, [puedeImprimir, presupuestoPdfSnapshot]);
 
   const compartirWhatsApp = async () => {
     if (!puedeImprimir || sharingPdf) return;
@@ -550,7 +585,7 @@ export default function PresupuestosClient({
     pdfSharePromiseRef.current = null;
     try {
       const res = await compartirPresupuestoPorWhatsApp({
-        elementId: "presupuesto-print-area",
+        snapshot: presupuestoPdfSnapshot,
         clienteNombre: nombrePersona,
         pdfPromise,
       });
