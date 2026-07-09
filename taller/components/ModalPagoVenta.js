@@ -43,7 +43,9 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
   const cfg = getTallerComprobanteConfig();
   const descEfectivo = round2(subtotal * 0.1);
   const totalEfectivo = round2(subtotal - descEfectivo);
-  const totalTarjetaTransfer = round2(subtotal);
+  const descTransferencia = round2(subtotal * 0.05);
+  const totalTransferencia = round2(subtotal - descTransferencia);
+  const totalTarjeta = round2(subtotal);
 
   const montoNum = Number(String(montoRecibido).replace(",", "."));
   const vuelto =
@@ -416,9 +418,20 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
         {step === "transferencia" ? (
           <div className="flex h-full flex-col gap-3">
             <p className="text-sm text-zinc-600">Enviá el importe al siguiente alias:</p>
-            <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-4 text-center text-3xl font-bold tabular-nums tracking-tight text-sky-950">
-              {money(totalTarjetaTransfer)}
-            </p>
+            <dl className="space-y-0.5 rounded-xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs sm:text-sm">
+              <div className="flex justify-between text-zinc-600">
+                <dt>Subtotal</dt>
+                <dd className="font-medium tabular-nums text-zinc-900">{money(subtotal)}</dd>
+              </div>
+              <div className="flex justify-between text-zinc-600">
+                <dt>Descuento 5%</dt>
+                <dd className="font-medium tabular-nums text-sky-700">−{money(descTransferencia)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-sky-200 pt-1.5 font-semibold text-sky-950">
+                <dt>Total a transferir</dt>
+                <dd className="text-2xl font-bold tabular-nums sm:text-3xl">{money(totalTransferencia)}</dd>
+              </div>
+            </dl>
             <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-center text-lg font-semibold tracking-wide text-sky-950">
               {cfg.alias}
             </p>
@@ -436,13 +449,13 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
                 className={`${btnBase} flex-1 bg-gradient-to-r from-sky-700 to-sky-600 text-white disabled:opacity-50`}
                 disabled={pending}
                 onClick={async () => {
-                  const body = await registrarVenta("transferencia", 0);
+                  const body = await registrarVenta("transferencia", descTransferencia);
                   if (!body) return;
                   setSaleSnapshot({
                     id_venta: body.id_venta,
                     subtotal: body.subtotal ?? subtotal,
-                    descuento: body.descuento ?? 0,
-                    total: body.total ?? totalTarjetaTransfer,
+                    descuento: body.descuento ?? descTransferencia,
+                    total: body.total ?? totalTransferencia,
                     metodo_label: "Transferencia",
                     monto_recibido: null,
                     vuelto: null,
@@ -463,7 +476,7 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
               Cobro con tarjeta por el monto indicado. No se aplica descuento adicional.
             </p>
             <p className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-4 text-center text-3xl font-bold tabular-nums tracking-tight text-violet-950">
-              {money(totalTarjetaTransfer)}
+              {money(totalTarjeta)}
             </p>
             <div className="mt-auto flex gap-2">
               <button
@@ -485,7 +498,7 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
                     id_venta: body.id_venta,
                     subtotal: body.subtotal ?? subtotal,
                     descuento: body.descuento ?? 0,
-                    total: body.total ?? totalTarjetaTransfer,
+                    total: body.total ?? totalTarjeta,
                     metodo_label: "Tarjeta",
                     monto_recibido: null,
                     vuelto: null,
