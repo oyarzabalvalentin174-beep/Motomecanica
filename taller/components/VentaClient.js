@@ -115,6 +115,19 @@ BARCODE_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
 ]);
 BARCODE_HINTS.set(DecodeHintType.TRY_HARDER, true);
 
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path
+        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  );
+}
+
 async function optimizeActiveCameraTrack(videoEl) {
   try {
     const stream = videoEl?.srcObject;
@@ -191,6 +204,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const [modalPagoOpen, setModalPagoOpen] = useState(false);
   const [cantidadModal, setCantidadModal] = useState(null);
   const [cantidadInput, setCantidadInput] = useState("1");
+  const [descProduct, setDescProduct] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanError, setScanError] = useState(null);
   const [scanReady, setScanReady] = useState(false);
@@ -658,18 +672,32 @@ export default function VentaClient({ initialProductos = [], listError = null })
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base font-medium text-zinc-900">{p.nombre}</p>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {p.marca_nombre ? `Marca: ${p.marca_nombre}` : "Sin marca"}
+                      </p>
                       <p className="text-sm text-zinc-500">
                         {p.codigo_barra ? `CB ${p.codigo_barra}` : "Sin código de barras"}
                         {p.codigo ? ` · ${p.codigo}` : ""} · Stock {p.stock} · ${money(p.precio_venta)}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => abrirCantidadParaProducto(p)}
-                      className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
-                    >
-                      Agregar
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDescProduct(p)}
+                        className="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 p-2 text-blue-800 hover:bg-blue-100"
+                        title="Ver descripción"
+                        aria-label="Ver descripción"
+                      >
+                        <EyeIcon />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => abrirCantidadParaProducto(p)}
+                        className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+                      >
+                        Agregar
+                      </button>
+                    </div>
                   </li>
                 ))
               )}
@@ -745,6 +773,38 @@ export default function VentaClient({ initialProductos = [], listError = null })
           </div>
         </aside>
       </div>
+
+      {descProduct ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-desc-titulo"
+          data-no-global-barcode
+        >
+          <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl">
+            <h3 id="modal-desc-titulo" className="text-lg font-bold text-zinc-900">
+              {descProduct.nombre}
+            </h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              {descProduct.marca_nombre ? `Marca: ${descProduct.marca_nombre}` : "Sin marca"}
+              {descProduct.codigo ? ` · Código: ${descProduct.codigo}` : ""}
+            </p>
+            <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700 whitespace-pre-wrap">
+              {descProduct.descripcion || "Este producto no tiene descripción."}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDescProduct(null)}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cantidadModal ? (
         <div

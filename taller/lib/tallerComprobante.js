@@ -1,10 +1,13 @@
 /** Datos del taller para el comprobante (configurá con variables NEXT_PUBLIC_* en .env.local). */
 export function getTallerComprobanteConfig() {
+  const alias1 = process.env.NEXT_PUBLIC_TALLER_ALIAS || "motomecanicaoyarz1";
+  const alias2 = process.env.NEXT_PUBLIC_TALLER_ALIAS_2 || "motomecanicaoyarz2";
   return {
     nombre: process.env.NEXT_PUBLIC_TALLER_NOMBRE || "Motomecánica Oyarzabal",
     direccion: process.env.NEXT_PUBLIC_TALLER_DIRECCION || "",
     telefono: process.env.NEXT_PUBLIC_TALLER_TELEFONO || "",
-    alias: process.env.NEXT_PUBLIC_TALLER_ALIAS || "oyarzabal.moto",
+    alias: alias1,
+    aliases: [alias1, alias2].filter(Boolean),
     logoPath: "/logo.jpg",
   };
 }

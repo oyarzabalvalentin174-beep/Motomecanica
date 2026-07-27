@@ -417,7 +417,7 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
 
         {step === "transferencia" ? (
           <div className="flex h-full flex-col gap-3">
-            <p className="text-sm text-zinc-600">Enviá el importe al siguiente alias:</p>
+            <p className="text-sm text-zinc-600">Enviá el importe a cualquiera de estos alias:</p>
             <dl className="space-y-0.5 rounded-xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs sm:text-sm">
               <div className="flex justify-between text-zinc-600">
                 <dt>Subtotal</dt>
@@ -432,9 +432,16 @@ export default function ModalPagoVenta({ open, onClose, cart, subtotal, onSaleSu
                 <dd className="text-2xl font-bold tabular-nums sm:text-3xl">{money(totalTransferencia)}</dd>
               </div>
             </dl>
-            <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-center text-lg font-semibold tracking-wide text-sky-950">
-              {cfg.alias}
-            </p>
+            <div className="space-y-2">
+              {(Array.isArray(cfg.aliases) && cfg.aliases.length > 0 ? cfg.aliases : [cfg.alias]).map((alias) => (
+                <p
+                  key={alias}
+                  className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-center text-lg font-semibold tracking-wide text-sky-950"
+                >
+                  {alias}
+                </p>
+              ))}
+            </div>
             <div className="mt-auto flex gap-2">
               <button
                 type="button"

@@ -27,7 +27,7 @@ export async function GET(request) {
   const fecha_desde = parseYmd(request.nextUrl.searchParams.get("desde"));
   const fecha_hasta = parseYmd(request.nextUrl.searchParams.get("hasta"));
 
-  const par = { periodo: ["dia", "semana", "mes", "anio"].includes(periodo) ? periodo : "mes" };
+  const par = { periodo: ["dia", "semana", "ultimomes", "mes", "anio"].includes(periodo) ? periodo : "mes" };
   if (fecha_ref !== undefined) par.fecha_ref = fecha_ref;
   if (fecha_desde !== undefined) par.fecha_desde = fecha_desde;
   if (fecha_hasta !== undefined) par.fecha_hasta = fecha_hasta;

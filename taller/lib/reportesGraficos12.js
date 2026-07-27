@@ -2,13 +2,22 @@ import { exec, query } from "@/components/db";
 
 const TZ = "America/Argentina/Buenos_Aires";
 
+const PERIODOS_VALIDOS = ["dia", "semana", "ultimomes", "mes", "anio"];
+
+function ymdLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function resolveGraficos12Range({
   periodo = "mes",
   fecha_ref,
   fecha_desde,
   fecha_hasta,
 }) {
-  const p = ["dia", "semana", "mes", "anio"].includes(periodo) ? periodo : "mes";
+  const p = PERIODOS_VALIDOS.includes(periodo) ? periodo : "mes";
 
   if (fecha_desde && fecha_hasta) {
     return { periodo: p, desde: fecha_desde, hasta: fecha_hasta };
@@ -29,21 +38,27 @@ export function resolveGraficos12Range({
     const day = d.getDay();
     const diff = day === 0 ? 6 : day - 1;
     d.setDate(d.getDate() - diff);
-    desde = d.toISOString().slice(0, 10);
+    desde = ymdLocal(d);
     const end = new Date(`${desde}T12:00:00`);
     end.setDate(end.getDate() + 6);
-    hasta = end.toISOString().slice(0, 10);
+    hasta = ymdLocal(end);
+  } else if (p === "ultimomes") {
+    const end = new Date(`${ref}T12:00:00`);
+    const start = new Date(end.getFullYear(), end.getMonth(), 1);
+    desde = ymdLocal(start);
+    hasta = ref;
   } else if (p === "anio") {
     const end = new Date(`${ref}T12:00:00`);
     end.setDate(end.getDate() - 364);
-    desde = end.toISOString().slice(0, 10);
+    desde = ymdLocal(end);
     hasta = ref;
   } else {
+    // mes → últimos 12 meses calendario
     const end = new Date(`${ref}T12:00:00`);
     const hastaMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0);
-    hasta = hastaMonth.toISOString().slice(0, 10);
+    hasta = ymdLocal(hastaMonth);
     const desdeMonth = new Date(end.getFullYear(), end.getMonth() - 11, 1);
-    desde = desdeMonth.toISOString().slice(0, 10);
+    desde = ymdLocal(desdeMonth);
   }
 
   return { periodo: p, desde, hasta };

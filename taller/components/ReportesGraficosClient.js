@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import ScrollToTopButton from "@/components/ScrollToTopButton";
 import {
   ResponsiveContainer,
@@ -15,11 +15,13 @@ import {
   Pie,
   Area,
   AreaChart,
+  Line,
 } from "recharts";
 
 const PERIODOS = [
   { id: "dia", label: "Día" },
   { id: "semana", label: "Semana" },
+  { id: "ultimomes", label: "Último mes" },
   { id: "mes", label: "Meses" },
   { id: "anio", label: "Último año" },
 ];
@@ -76,10 +78,11 @@ function shortName(n, max = 18) {
 }
 
 function periodoSubtitle(periodo, fecha) {
-  if (periodo === "dia") return fecha ? `Ventas del ${fecha}` : "Ventas del día seleccionado";
-  if (periodo === "semana") return "Total facturado por día en la semana";
-  if (periodo === "mes") return "Total facturado por mes (últimos 12 meses)";
-  return "Total facturado por mes (últimos 12 meses)";
+  if (periodo === "dia") return fecha ? `Suma facturada por hora · ${fecha}` : "Suma facturada por hora del día";
+  if (periodo === "semana") return "Suma facturada por día en la semana (lun–dom)";
+  if (periodo === "ultimomes") return "Suma facturada semana a semana del mes en curso";
+  if (periodo === "mes") return "Suma facturada por mes (últimos 12 meses)";
+  return "Suma facturada por mes (últimos 12 meses)";
 }
 
 function ChartCard({ title, subtitle, children, className = "", tall = false, accent = "red" }) {
@@ -152,7 +155,7 @@ function KpiCard({ label, value, hint, accent = "red" }) {
   );
 }
 
-function PeriodFilters({ periodo, setPeriodo, fecha, setFecha, onApply, loading, compact = false }) {
+function PeriodFilters({ periodo, setPeriodo, fecha, setFecha, onApply, onSelectPeriodo, loading, compact = false }) {
   return (
     <div
       className={`flex flex-col gap-3 ${compact ? "" : "rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 sm:flex-row sm:flex-wrap sm:items-end"}`}
@@ -162,7 +165,10 @@ function PeriodFilters({ periodo, setPeriodo, fecha, setFecha, onApply, loading,
           <button
             key={p.id}
             type="button"
-            onClick={() => setPeriodo(p.id)}
+            onClick={() => {
+              setPeriodo(p.id);
+              onSelectPeriodo?.(p.id);
+            }}
             className={`rounded-lg px-3 py-2 text-xs font-semibold transition sm:text-sm ${
               periodo === p.id
                 ? "bg-gradient-to-r from-red-700 to-red-600 text-white shadow-sm shadow-red-900/20"
@@ -248,64 +254,47 @@ export default function ReportesGraficosClient({
   const [err12, setErr12] = useState(initialErr12);
   const [err34, setErr34] = useState(initialErr34);
   const [errKpis, setErrKpis] = useState(initialErrKpis);
-  const [loading12, setLoading12] = useState(false);
   const [loading34, setLoading34] = useState(false);
   const [periodo, setPeriodo] = useState("mes");
   const [fecha, setFecha] = useState(todayYmd());
 
-  const periodQs = useMemo(() => {
-    const p = new URLSearchParams({ periodo });
-    if (periodo === "dia" && fecha) p.set("fecha", fecha);
+  const buildPeriodQs = useCallback((periodoVal, fechaVal) => {
+    const p = new URLSearchParams({ periodo: periodoVal });
+    if (periodoVal === "dia" && fechaVal) p.set("fecha", fechaVal);
     return `?${p.toString()}`;
-  }, [periodo, fecha]);
+  }, []);
 
-  const refresh12 = useCallback(async () => {
-    setLoading12(true);
-    setErr12(null);
-    try {
-      const r = await fetch(`/api/reportes/graficos-12${periodQs}`, { credentials: "include" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) setErr12(j?.error || "No se pudieron cargar rankings y marcas.");
-      else setData12(j);
-    } catch (e) {
-      setErr12(e?.message || "Error de red");
-    } finally {
-      setLoading12(false);
-    }
-  }, [periodQs]);
-
-  const refresh34 = useCallback(async () => {
-    setLoading34(true);
-    setErr34(null);
-    try {
-      const r = await fetch(`/api/reportes/graficos-34${periodQs}`, { credentials: "include" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) setErr34(j?.error || "No se pudieron cargar ventas y métodos de pago.");
-      else setData34(j);
-    } catch (e) {
-      setErr34(e?.message || "Error de red");
-    } finally {
-      setLoading34(false);
-    }
-  }, [periodQs]);
-
-  const refreshAll = useCallback(async () => {
-    setErrKpis(null);
-    await Promise.all([
-      refresh12(),
-      refresh34(),
-      (async () => {
-        try {
-          const rk = await fetch("/api/reportes/kpis", { credentials: "include" });
-          const jk = await rk.json().catch(() => ({}));
-          if (!rk.ok) setErrKpis(jk?.error || "No se pudieron cargar indicadores.");
-          else setDataKpis(jk);
-        } catch (e) {
-          setErrKpis(e?.message || "Error de red");
+  /** Solo actualiza la serie de Ventas facturadas; no toca métodos de pago ni el resto. */
+  const refreshVentasSerie = useCallback(
+    async (periodoOverride, fechaOverride) => {
+      const periodoVal = periodoOverride ?? periodo;
+      const fechaVal = fechaOverride ?? fecha;
+      setLoading34(true);
+      setErr34(null);
+      try {
+        const r = await fetch(`/api/reportes/graficos-34${buildPeriodQs(periodoVal, fechaVal)}`, {
+          credentials: "include",
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setErr34(j?.error || "No se pudieron cargar las ventas facturadas.");
+          return;
         }
-      })(),
-    ]);
-  }, [refresh12, refresh34]);
+        setData34((prev) => ({
+          ...(prev && typeof prev === "object" ? prev : {}),
+          ventas_serie: Array.isArray(j?.ventas_serie) ? j.ventas_serie : [],
+          periodo: j?.periodo ?? periodoVal,
+          fecha_desde: j?.fecha_desde,
+          fecha_hasta: j?.fecha_hasta,
+        }));
+      } catch (e) {
+        setErr34(e?.message || "Error de red");
+      } finally {
+        setLoading34(false);
+      }
+    },
+    [periodo, fecha, buildPeriodQs],
+  );
 
   const stockMas = Array.isArray(data12?.stock_mas) ? data12.stock_mas : [];
   const stockMenos = Array.isArray(data12?.stock_menos) ? data12.stock_menos : [];
@@ -354,31 +343,68 @@ export default function ReportesGraficosClient({
   }));
 
   const ventasSerie = Array.isArray(data34?.ventas_serie) ? data34.ventas_serie : [];
-  const areaData = ventasSerie.map((r) => {
-    const raw = r.fecha ?? r.dia ?? r.periodo ?? r.label;
-    let label = String(r.label ?? "—");
-    if (raw && !r.label) {
-      try {
-        const s = String(raw);
-        if (periodo === "dia" && s.includes("T")) {
-          const d = new Date(s);
-          if (!Number.isNaN(d.getTime())) label = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-        } else if (periodo === "anio" || periodo === "mes") {
-          const d = new Date(`${s.slice(0, 10)}T12:00:00`);
-          if (!Number.isNaN(d.getTime())) label = d.toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
-        } else {
-          const d = new Date(`${s.slice(0, 10)}T12:00:00`);
-          if (!Number.isNaN(d.getTime())) label = d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
+  const areaData = (() => {
+    const buckets = new Map();
+    for (const r of ventasSerie) {
+      const raw = r.fecha ?? r.dia ?? r.periodo ?? r.mes ?? r.label;
+      let sortKey = String(raw ?? "");
+      let label = String(r.label ?? "").trim();
+
+      if (!label || !r.label) {
+        try {
+          const s = String(raw ?? "");
+          if (periodo === "dia") {
+            if (s.includes("T")) {
+              const d = new Date(s);
+              if (!Number.isNaN(d.getTime())) {
+                label = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+                sortKey = `${String(d.getHours()).padStart(2, "0")}`;
+              }
+            } else if (/^\d{1,2}$/.test(s) || /^\d{2}:\d{2}/.test(s)) {
+              const h = parseInt(s, 10);
+              label = `${String(h).padStart(2, "0")}:00`;
+              sortKey = String(h).padStart(2, "0");
+            }
+          } else if (periodo === "ultimomes") {
+            const d = new Date(`${s.slice(0, 10)}T12:00:00`);
+            if (!Number.isNaN(d.getTime())) {
+              const end = new Date(d);
+              end.setDate(end.getDate() + 6);
+              const a = d.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+              const b = end.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+              label = `${a} – ${b}`;
+              sortKey = s.slice(0, 10);
+            }
+          } else if (periodo === "mes" || periodo === "anio") {
+            const d = new Date(`${s.slice(0, 10)}T12:00:00`);
+            if (!Number.isNaN(d.getTime())) {
+              label = d.toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
+              sortKey = s.slice(0, 7);
+            }
+          } else {
+            const d = new Date(`${s.slice(0, 10)}T12:00:00`);
+            if (!Number.isNaN(d.getTime())) {
+              label = d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
+              sortKey = s.slice(0, 10);
+            }
+          }
+        } catch {
+          label = String(raw ?? "—").slice(0, 16);
         }
-      } catch {
-        label = String(raw).slice(0, 10);
       }
+
+      if (!label) label = "—";
+      const key = sortKey || label;
+      const prev = buckets.get(key) || { label, sortKey: key, total: 0 };
+      prev.total += Number(r.total ?? r.importe ?? r.total_facturado ?? 0);
+      if (!prev.label || prev.label === "—") prev.label = label;
+      buckets.set(key, prev);
     }
-    return {
-      label,
-      total: Number(r.total ?? r.importe ?? 0),
-    };
-  });
+
+    return Array.from(buckets.values())
+      .sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)))
+      .map(({ label, total }) => ({ label, total }));
+  })();
 
   const totalFacturado = areaData.reduce((acc, row) => acc + row.total, 0);
 
@@ -388,8 +414,6 @@ export default function ReportesGraficosClient({
   const inv = kpiOk ? Number(dataKpis.total_invertido ?? 0) : NaN;
   const valVta = kpiOk ? Number(dataKpis.valor_venta_total ?? 0) : NaN;
 
-  const loadingVentas = loading12 || loading34;
-
   return (
     <div className="mx-auto w-full max-w-[90rem] px-4 pb-20 pt-20 sm:px-6 sm:pt-24 lg:px-10 lg:pt-28">
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/95 p-5 shadow-[0_8px_40px_-12px_rgba(24,24,27,0.18)] backdrop-blur-sm sm:p-7">
@@ -397,24 +421,15 @@ export default function ReportesGraficosClient({
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,rgba(220,38,38,0.08),transparent_50%)]"
           aria-hidden
         />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-600/90">Reportes</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl lg:text-4xl">
-              Dashboard de gráficos
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">
-              Inventario en tiempo real, rankings de ventas y facturación con filtros por día, semana, meses o último año.
-            </p>
-          </div>
-          <PeriodFilters
-            periodo={periodo}
-            setPeriodo={setPeriodo}
-            fecha={fecha}
-            setFecha={setFecha}
-            onApply={refreshAll}
-            loading={loadingVentas}
-          />
+        <div className="relative">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-600/90">Reportes</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl lg:text-4xl">
+            Dashboard de gráficos
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">
+            Inventario en tiempo real, rankings y facturación. El filtro de período aplica solo al gráfico de ventas
+            facturadas.
+          </p>
         </div>
       </div>
 
@@ -446,24 +461,24 @@ export default function ReportesGraficosClient({
       <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ChartCard
           title="Productos con más ventas"
-          subtitle={`Top 10 por unidades vendidas · ${periodoSubtitle(periodo, fecha)}`}
+          subtitle="Top 10 por unidades vendidas · últimos 12 meses"
           tall
           accent="emerald"
         >
           {barVentasMas.length === 0 ? (
-            <EmptyChart tall message="Sin ventas en el período seleccionado." />
+            <EmptyChart tall message="Sin ventas en el período." />
           ) : (
             <HorizontalBarBlock data={barVentasMas} dataKey="unidades" fill="#059669" height={340} />
           )}
         </ChartCard>
         <ChartCard
           title="Productos con menos ventas"
-          subtitle={`Top 10 con ventas registradas (menor volumen) · ${periodoSubtitle(periodo, fecha)}`}
+          subtitle="Top 10 con ventas registradas (menor volumen) · últimos 12 meses"
           tall
           accent="red"
         >
           {barVentasMenos.length === 0 ? (
-            <EmptyChart tall message="Sin datos de ranking en el período." />
+            <EmptyChart tall message="Sin datos de ranking." />
           ) : (
             <HorizontalBarBlock data={barVentasMenos} dataKey="unidades" fill="#b91c1c" height={340} />
           )}
@@ -474,7 +489,7 @@ export default function ReportesGraficosClient({
       <div className="mb-8">
         <ChartCard
           title="Métodos de pago"
-          subtitle="Distribución de ventas y montos cobrados en el período activo."
+          subtitle="Distribución de ventas y montos cobrados · últimos 12 meses"
           accent="violet"
         >
           {pieData.length === 0 || pieData.every((d) => d.value <= 0) ? (
@@ -544,30 +559,55 @@ export default function ReportesGraficosClient({
               setPeriodo={setPeriodo}
               fecha={fecha}
               setFecha={setFecha}
-              onApply={refresh34}
+              onSelectPeriodo={(id) => void refreshVentasSerie(id, fecha)}
+              onApply={() => void refreshVentasSerie()}
               loading={loading34}
             />
           </div>
           {areaData.length === 0 ? (
-            <EmptyChart tall message="No hay ventas para mostrar en este período." />
+            <EmptyChart tall message="No hay datos para armar la serie en este período." />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={areaData} margin={{ top: 12, right: 16, left: 4, bottom: 8 }}>
+            <ResponsiveContainer width="100%" height={320}>
+              <AreaChart data={areaData} margin={{ top: 16, right: 16, left: 4, bottom: 8 }}>
                 <defs>
                   <linearGradient id="fillVentasTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#dc2626" stopOpacity={0.4} />
+                    <stop offset="0%" stopColor="#dc2626" stopOpacity={0.28} />
                     <stop offset="100%" stopColor="#dc2626" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="label" tick={{ fill: "#52525b", fontSize: 11 }} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: "#52525b", fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  minTickGap={periodo === "dia" ? 8 : 12}
+                />
                 <YAxis
                   tick={{ fill: "#52525b", fontSize: 12 }}
                   tickFormatter={(v) => `$${Number(v).toLocaleString("es-AR", { maximumFractionDigits: 0 })}`}
                   width={72}
                 />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`$${money(v)}`, "Facturado"]} />
-                <Area type="monotone" dataKey="total" stroke="#b91c1c" strokeWidth={2.5} fill="url(#fillVentasTotal)" />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v) => [`$${money(v)}`, "Facturado"]}
+                  labelFormatter={(l) => String(l)}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  stroke="none"
+                  fill="url(#fillVentasTotal)"
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#b91c1c"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: "#b91c1c", stroke: "#fff", strokeWidth: 2 }}
+                  activeDot={{ r: 6, fill: "#991b1b", stroke: "#fff", strokeWidth: 2 }}
+                  connectNulls
+                />
               </AreaChart>
             </ResponsiveContainer>
           )}

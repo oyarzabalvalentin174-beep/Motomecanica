@@ -303,7 +303,7 @@ export default function AppSidebar({ active }) {
           </h2>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto bg-gradient-to-b from-zinc-100 to-zinc-50 px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto bg-gradient-to-b from-zinc-100 to-zinc-50 px-3 py-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {menuItems.map((item) => {
             const Icon = item.icon;
             if (item.type === "link") {

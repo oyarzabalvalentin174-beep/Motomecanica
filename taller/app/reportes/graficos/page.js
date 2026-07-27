@@ -4,6 +4,7 @@ import UserPop from "@/components/UserPop";
 import ReportesGraficosClient from "@/components/ReportesGraficosClient";
 import { exec } from "@/components/db";
 import { loadGraficos12 } from "@/lib/reportesGraficos12";
+import { loadGraficos34 } from "@/lib/reportesGraficos34";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +27,9 @@ export default async function ReportesGraficosPage() {
   }
 
   try {
-    initial34 = await exec("spgetreportegraficos34", { periodo: periodoInicial });
+    initial34 = await loadGraficos34({ periodo: periodoInicial });
   } catch (e) {
-    error34 = e?.message || "No se pudo ejecutar spgetreportegraficos34";
+    error34 = e?.message || "No se pudieron cargar ventas y métodos de pago";
   }
 
   try {

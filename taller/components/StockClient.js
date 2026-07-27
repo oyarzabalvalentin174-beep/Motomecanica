@@ -91,6 +91,73 @@ function EyeIcon() {
   );
 }
 
+function PriceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function money(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
+/** Precios según método de pago (misma lógica que ventas). */
+function preciosPorMetodo(precioVenta) {
+  const lista = round2(precioVenta);
+  return {
+    lista,
+    efectivo: round2(lista * 0.9),
+    transferencia: round2(lista * 0.95),
+    tarjeta: lista,
+  };
+}
+
+function normalizeSearch(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+/** Buscador suelto: cada palabra cuenta por separado (sin exigir frase continua ni conectores). */
+function matchesLooseSearch(row, rawTerm) {
+  const STOP = new Set(["de", "del", "la", "el", "los", "las", "y", "o", "a", "en", "para", "con", "por", "un", "una", "al"]);
+
+  const parts = normalizeSearch(rawTerm)
+    .split(/[^a-z0-9]+/i)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return true;
+
+  const tokens = parts.filter((t) => t.length > 1 && !STOP.has(t));
+  const meaningful = tokens.length > 0 ? tokens : parts;
+
+  const blob = normalizeSearch(
+    [
+      row.id_producto,
+      row.codigo_barra,
+      row.codigo,
+      row.nombre,
+      row.descripcion,
+      row.marca_nombre,
+      row.sector_descripcion,
+    ]
+      .filter((v) => v != null && String(v).trim() !== "")
+      .join(" "),
+  );
+
+  return meaningful.every((token) => blob.includes(token));
+}
+
 function toForm(row) {
   return {
     id_producto: row?.id_producto ?? null,
@@ -177,6 +244,7 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [descProduct, setDescProduct] = useState(null);
+  const [priceProduct, setPriceProduct] = useState(null);
   const [formState, setFormState] = useState(EMPTY_FORM);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanTarget, setScanTarget] = useState("form");
@@ -202,28 +270,14 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   );
 
   const filteredRows = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = q.trim();
     const base = initialRows.filter((row) => {
       if (statusFilter === "activos" && row.archivado) return false;
       if (statusFilter === "archivados" && !row.archivado) return false;
       if (marcaFilter !== "all" && Number(row.marca_id) !== Number(marcaFilter)) return false;
       if (sectorFilter !== "all" && Number(row.sector_id) !== Number(sectorFilter)) return false;
       if (!term) return true;
-
-      const blob = [
-        row.id_producto,
-        row.codigo_barra,
-        row.codigo,
-        row.nombre,
-        row.descripcion,
-        row.marca_nombre,
-        row.sector_descripcion,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return blob.includes(term);
+      return matchesLooseSearch(row, term);
     });
 
     if (sortBy === "stock_desc") {
@@ -406,8 +460,8 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-12 pt-18 sm:px-6 lg:px-8 lg:pt-20">
-      <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-4 shadow-md shadow-zinc-900/5">
+    <div className="mx-auto w-full max-w-[100rem] px-3 pb-12 pt-18 sm:px-5 lg:px-6 lg:pt-20">
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-md shadow-zinc-900/5 sm:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Stock</h1>
@@ -420,8 +474,8 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 setQ(e.target.value);
                 setPage(1);
               }}
-              placeholder="Buscar por código, nombre o descripción"
-              className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+              placeholder="Buscar: palabras sueltas en código, nombre o descripción…"
+              className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-base text-zinc-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
             />
             <button
               type="button"
@@ -575,12 +629,27 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
 
       <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-lg shadow-zinc-900/8">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1150px] border-collapse text-left">
+          <table className="w-full min-w-[1080px] border-collapse text-left text-base">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-100/90">
-                {["Código", "Código barra", "Nombre", "Marca", "Sector", "Stock", "Min", "P. compra", "P. venta", "Estado", "Acciones"].map((h) => (
-                  <th key={h} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                    {h}
+                {[
+                  { label: "Código", className: "w-[8%]" },
+                  { label: "Código barra", className: "w-[9%]" },
+                  { label: "Nombre", className: "w-[22%] min-w-[14rem]" },
+                  { label: "Marca", className: "w-[9%]" },
+                  { label: "Sector", className: "w-[9%]" },
+                  { label: "Stock", className: "w-[5%]" },
+                  { label: "Min", className: "w-[5%]" },
+                  { label: "P. compra", className: "w-[8%]" },
+                  { label: "P. venta", className: "w-[8%]" },
+                  { label: "Estado", className: "w-[7%]" },
+                  { label: "Acciones", className: "w-[10%] min-w-[13rem]" },
+                ].map((h) => (
+                  <th
+                    key={h.label}
+                    className={`px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-zinc-500 ${h.className}`}
+                  >
+                    {h.label}
                   </th>
                 ))}
               </tr>
@@ -588,10 +657,10 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
             <tbody>
               {pageRows.map((row, idx) => (
                 <tr key={row.id_producto} className={`border-b border-zinc-200 ${idx % 2 === 0 ? "bg-white" : "bg-zinc-50/50"}`}>
-                  <td className="px-3 py-2 text-sm text-zinc-700">
+                  <td className="px-3 py-2.5 text-base text-zinc-700">
                     <span className="inline-flex items-center gap-2">
                       <span
-                        className={`inline-block h-2.5 w-2.5 rounded-full ${getStockDotClass(
+                        className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${getStockDotClass(
                           row.stock,
                           row.stock_minimo,
                         )}`}
@@ -600,20 +669,22 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                       <span>{row.codigo || "-"}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">{row.codigo_barra || "-"}</td>
-                  <td className="px-3 py-2 text-sm font-semibold text-zinc-900">{row.nombre}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">{row.marca_nombre || "-"}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">{row.sector_descripcion || "-"}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">{row.stock}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">{row.stock_minimo}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">${Number(row.precio_compra || 0).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-sm text-zinc-700">${Number(row.precio_venta || 0).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-sm">
-                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${row.archivado ? "bg-zinc-200 text-zinc-700" : "bg-emerald-100 text-emerald-800"}`}>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">{row.codigo_barra || "-"}</td>
+                  <td className="px-3 py-2.5 text-base font-semibold leading-snug text-zinc-900">
+                    {row.nombre}
+                  </td>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">{row.marca_nombre || "-"}</td>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">{row.sector_descripcion || "-"}</td>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">{row.stock}</td>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">{row.stock_minimo}</td>
+                  <td className="px-3 py-2.5 text-base text-zinc-700">${money(row.precio_compra)}</td>
+                  <td className="px-3 py-2.5 text-base font-bold tabular-nums text-zinc-900">${money(row.precio_venta)}</td>
+                  <td className="px-3 py-2.5 text-base">
+                    <span className={`rounded-md px-2 py-1 text-sm font-semibold ${row.archivado ? "bg-zinc-200 text-zinc-700" : "bg-emerald-100 text-emerald-800"}`}>
                       {row.archivado ? "Archivado" : "Activo"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2.5 text-right">
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -623,6 +694,15 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                         aria-label="Ver descripción"
                       >
                         <EyeIcon />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPriceProduct(row)}
+                        className="inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 p-1.5 text-emerald-800"
+                        title="Ver precios por método de pago"
+                        aria-label="Ver precios por método de pago"
+                      >
+                        <PriceIcon />
                       </button>
                       <button type="button" onClick={() => startEdit(row)} className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800">
                         Editar
@@ -674,13 +754,59 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
             <p className="mt-1 text-sm text-zinc-500">
               {descProduct.codigo ? `Código: ${descProduct.codigo}` : "Sin código"}
             </p>
-            <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+            <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-base text-zinc-700 whitespace-pre-wrap">
               {descProduct.descripcion || "Este producto no tiene descripción."}
             </div>
             <div className="mt-4 flex justify-end">
               <button
                 type="button"
                 onClick={() => setDescProduct(null)}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {priceProduct ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-bold text-zinc-900">{priceProduct.nombre}</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              Precios según método de pago
+              {priceProduct.codigo ? ` · ${priceProduct.codigo}` : ""}
+            </p>
+            {(() => {
+              const p = preciosPorMetodo(priceProduct.precio_venta);
+              return (
+                <ul className="mt-4 space-y-2">
+                  <li className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                    <span className="text-sm font-medium text-zinc-700">Lista / Tarjeta</span>
+                    <span className="text-base font-bold tabular-nums text-zinc-900">${money(p.tarjeta)}</span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-sky-900">Transferencia</p>
+                      <p className="text-xs text-sky-700">5% de descuento</p>
+                    </div>
+                    <span className="text-base font-bold tabular-nums text-sky-950">${money(p.transferencia)}</span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900">Efectivo</p>
+                      <p className="text-xs text-emerald-700">10% de descuento</p>
+                    </div>
+                    <span className="text-base font-bold tabular-nums text-emerald-950">${money(p.efectivo)}</span>
+                  </li>
+                </ul>
+              );
+            })()}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPriceProduct(null)}
                 className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
               >
                 Cerrar
