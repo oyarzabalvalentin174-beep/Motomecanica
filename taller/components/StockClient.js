@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { addProductToVentaCart } from "@/lib/ventaCartBridge";
 
 const EMPTY_FORM = {
   id_producto: null,
@@ -459,6 +460,24 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
     }
   };
 
+  const enviarAVenta = useCallback((row) => {
+    const stock = Number(row?.stock ?? 0);
+    if (stock < 1) {
+      setBanner({ type: "err", text: "Sin stock para agregar a la venta." });
+      return;
+    }
+    const result = addProductToVentaCart(row, 1);
+    if (!result.ok) {
+      setBanner({ type: "err", text: result.error || "No se pudo agregar al carrito." });
+      return;
+    }
+    setPriceProduct(null);
+    setBanner({
+      type: "ok",
+      text: `“${row.nombre}” agregado al carrito de ventas (${result.cart.length} producto${result.cart.length === 1 ? "" : "s"}). Podés seguir cargando o ir a Ventas cuando quieras.`,
+    });
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-[100rem] px-3 pb-12 pt-18 sm:px-5 lg:px-6 lg:pt-20">
       <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-md shadow-zinc-900/5 sm:px-5">
@@ -775,34 +794,60 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
           <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-bold text-zinc-900">{priceProduct.nombre}</h3>
             <p className="mt-1 text-sm text-zinc-500">
-              Precios según método de pago
+              Tocá un método para agregar 1 unidad al carrito de ventas. Podés seguir cargando más productos y entrar a
+              Ventas cuando quieras.
               {priceProduct.codigo ? ` · ${priceProduct.codigo}` : ""}
             </p>
             {(() => {
               const p = preciosPorMetodo(priceProduct.precio_venta);
+              const sinStock = Number(priceProduct.stock ?? 0) < 1;
               return (
                 <ul className="mt-4 space-y-2">
-                  <li className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                    <span className="text-sm font-medium text-zinc-700">Lista / Tarjeta</span>
-                    <span className="text-base font-bold tabular-nums text-zinc-900">${money(p.tarjeta)}</span>
+                  <li>
+                    <button
+                      type="button"
+                      disabled={sinStock}
+                      onClick={() => enviarAVenta(priceProduct)}
+                      className="flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-left transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span className="text-sm font-medium text-zinc-700">Lista / Tarjeta</span>
+                      <span className="text-base font-bold tabular-nums text-zinc-900">${money(p.tarjeta)}</span>
+                    </button>
                   </li>
-                  <li className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-sky-900">Transferencia</p>
-                      <p className="text-xs text-sky-700">5% de descuento</p>
-                    </div>
-                    <span className="text-base font-bold tabular-nums text-sky-950">${money(p.transferencia)}</span>
+                  <li>
+                    <button
+                      type="button"
+                      disabled={sinStock}
+                      onClick={() => enviarAVenta(priceProduct)}
+                      className="flex w-full items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-sky-900">Transferencia</p>
+                        <p className="text-xs text-sky-700">5% de descuento</p>
+                      </div>
+                      <span className="text-base font-bold tabular-nums text-sky-950">${money(p.transferencia)}</span>
+                    </button>
                   </li>
-                  <li className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-emerald-900">Efectivo</p>
-                      <p className="text-xs text-emerald-700">10% de descuento</p>
-                    </div>
-                    <span className="text-base font-bold tabular-nums text-emerald-950">${money(p.efectivo)}</span>
+                  <li>
+                    <button
+                      type="button"
+                      disabled={sinStock}
+                      onClick={() => enviarAVenta(priceProduct)}
+                      className="flex w-full items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-emerald-900">Efectivo</p>
+                        <p className="text-xs text-emerald-700">10% de descuento</p>
+                      </div>
+                      <span className="text-base font-bold tabular-nums text-emerald-950">${money(p.efectivo)}</span>
+                    </button>
                   </li>
                 </ul>
               );
             })()}
+            {Number(priceProduct.stock ?? 0) < 1 ? (
+              <p className="mt-3 text-sm font-medium text-red-700">Sin stock: no se puede agregar a la venta.</p>
+            ) : null}
             <div className="mt-4 flex justify-end">
               <button
                 type="button"

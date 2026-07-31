@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import ModalPagoVenta from "@/components/ModalPagoVenta";
+import { clearVentaCart, readVentaCart, writeVentaCart } from "@/lib/ventaCartBridge";
 
 function money(n) {
   const x = Number(n);
@@ -194,6 +195,17 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const [cart, setCart] = useState([]);
   const cartRef = useRef(cart);
   cartRef.current = cart;
+  const [cartReady, setCartReady] = useState(false);
+
+  useEffect(() => {
+    setCart(readVentaCart());
+    setCartReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cartReady) return;
+    writeVentaCart(cart);
+  }, [cart, cartReady]);
 
   const [q, setQ] = useState("");
   const [resultados, setResultados] = useState([]);
@@ -459,6 +471,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
         text: `Venta #${snap?.id_venta ?? ""} registrada. Total ${money(snap?.total)}`,
       });
       setCart([]);
+      clearVentaCart();
       setQ("");
       setResultados([]);
       router.refresh();
