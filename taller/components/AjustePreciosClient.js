@@ -101,7 +101,8 @@ export default function AjustePreciosClient({ marcas = [], listError = null }) {
         <header className="mb-4 border-b border-zinc-200/80 pb-4">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Ajuste de precios</h1>
           <p className="mt-1 text-sm text-zinc-600">
-            Aplicá aumentos o descuentos por porcentaje a un producto, marca o a todo el catálogo.
+            Aplicá aumentos o descuentos por el mismo porcentaje a precio de compra y de venta (producto, marca o todo el
+            catálogo).
           </p>
         </header>
 

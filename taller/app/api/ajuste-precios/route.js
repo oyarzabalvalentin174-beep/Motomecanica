@@ -45,7 +45,9 @@ export async function POST(request) {
   try {
     let sql = `
       update app.producto p
-      set precio_venta = round(greatest(0, coalesce(p.precio_venta, 0) * $1)::numeric, 2)
+      set
+        precio_venta = round(greatest(0, coalesce(p.precio_venta, 0) * $1)::numeric, 2),
+        precio_compra = round(greatest(0, coalesce(p.precio_compra, 0) * $1)::numeric, 2)
       where coalesce(p.archivado, false) = false
     `;
     const params = [safeFactor];
