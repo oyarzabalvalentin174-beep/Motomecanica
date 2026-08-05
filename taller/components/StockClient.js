@@ -225,9 +225,10 @@ function getStockDotClass(stock, stockMinimo) {
   const s = Number(stock || 0);
   const min = Number(stockMinimo || 0);
 
-  if (s === 0) return "bg-red-500";
-  if (s > min + 5) return "bg-emerald-500";
-  return "bg-amber-400";
+  if (s <= 0) return "bg-red-500";
+  if (s >= min + 3) return "bg-emerald-500";
+  if (s >= min - 2) return "bg-amber-400";
+  return "bg-red-500";
 }
 
 export default function StockClient({ initialRows, marcas = [], sectores = [], listError }) {
@@ -683,7 +684,7 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                           row.stock,
                           row.stock_minimo,
                         )}`}
-                        title="Estado de stock"
+                        title={`Stock ${row.stock} · mínimo ${row.stock_minimo}`}
                       />
                       <span>{row.codigo || "-"}</span>
                     </span>
