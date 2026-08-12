@@ -8,6 +8,13 @@ import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
 
+function normalizeArray(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  return [];
+}
+
 export default async function PresupuestosPage(props) {
   await requireSession("/presupuestos");
   const searchParams = await Promise.resolve(props.searchParams);
@@ -16,15 +23,20 @@ export default async function PresupuestosPage(props) {
 
   let lista = [];
   let detail = null;
+  let productos = [];
   let listError = null;
 
   try {
-    const rawList = await exec("spgetpresupuestos", {});
+    const [rawList, rawProductos] = await Promise.all([
+      exec("spgetpresupuestos", {}),
+      exec("spgetproductos", { archivado: false }),
+    ]);
     if (rawList?.status === "error") {
       listError = rawList.message || "No se pudieron cargar los presupuestos";
     } else {
       lista = normalizeSpList(rawList);
     }
+    productos = normalizeArray(rawProductos).filter((p) => p && p.archivado !== true);
   } catch (e) {
     listError = e?.message || "No se pudieron cargar los presupuestos";
   }
@@ -53,6 +65,7 @@ export default async function PresupuestosPage(props) {
           initialList={lista}
           initialDetail={detail}
           initialSelectedId={selectedId}
+          initialProductos={productos}
           listError={listError}
         />
       </main>

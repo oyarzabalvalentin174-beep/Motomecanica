@@ -36,6 +36,7 @@ function emptyLine(presupuestoId) {
   return {
     key: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     id: null,
+    tipo: "dato",
     parametro: "",
     cantidad: "1",
     precio_unitario: "",
@@ -131,10 +132,158 @@ function normalizeSearch(s) {
     .replace(/\p{M}/gu, "");
 }
 
+function filtrarProductosPresupuesto(catalogo, rawTerm) {
+  const tokens = normalizeSearch(rawTerm)
+    .split(/[^a-z0-9]+/i)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0 || !Array.isArray(catalogo)) return [];
+
+  const scored = [];
+  for (const p of catalogo) {
+    if (p?.archivado === true) continue;
+    const blob = normalizeSearch(
+      [p.nombre, p.codigo, p.codigo_barra, p.marca_nombre, p.descripcion].filter(Boolean).join(" "),
+    );
+    if (!tokens.every((t) => blob.includes(t))) continue;
+    const nom = normalizeSearch(p.nombre);
+    const score = tokens.every((t) => nom.includes(t)) ? 0 : 1;
+    scored.push({ p, score, sortKey: nom });
+  }
+  scored.sort((a, b) => {
+    if (a.score !== b.score) return a.score - b.score;
+    return a.sortKey.localeCompare(b.sortKey);
+  });
+  return scored.slice(0, 12).map((x) => x.p);
+}
+
+function ConceptoLineaField({
+  row,
+  catalogo,
+  inputClassName,
+  onTipoChange,
+  onParametroChange,
+  onPickProducto,
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef = useRef(null);
+  const tipo = row.tipo === "producto" ? "producto" : "dato";
+  const resultados = useMemo(() => {
+    if (tipo !== "producto") return [];
+    const t = String(row.parametro || "").trim();
+    if (t.length < 2) return [];
+    return filtrarProductosPresupuesto(catalogo, t);
+  }, [tipo, row.parametro, catalogo]);
+
+  useEffect(() => {
+    setHighlight(0);
+  }, [row.parametro, tipo]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const aplicarProducto = (p) => {
+    if (!p) return;
+    onPickProducto(p);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapRef} className="space-y-1.5">
+      <select
+        value={tipo}
+        onChange={(e) => {
+          onTipoChange(e.target.value);
+          setOpen(false);
+        }}
+        className="h-9 w-full rounded-lg border border-zinc-300/55 bg-white px-2 text-sm font-semibold text-zinc-800 outline-none focus:border-red-400/70 focus:ring-2 focus:ring-red-500/10"
+        aria-label="Tipo de ítem"
+      >
+        <option value="dato">Dato / servicio</option>
+        <option value="producto">Producto (stock)</option>
+      </select>
+      <div className="relative">
+        <input
+          value={row.parametro}
+          onChange={(e) => {
+            onParametroChange(e.target.value);
+            if (tipo === "producto") setOpen(true);
+          }}
+          onFocus={() => {
+            if (tipo === "producto" && String(row.parametro || "").trim().length >= 2) setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (tipo !== "producto" || !open || resultados.length === 0) {
+              if (e.key === "Enter" && tipo === "producto" && resultados.length > 0) {
+                e.preventDefault();
+                aplicarProducto(resultados[0]);
+              }
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlight((h) => Math.min(h + 1, resultados.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlight((h) => Math.max(h - 1, 0));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              aplicarProducto(resultados[highlight] || resultados[0]);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          maxLength={100}
+          className={inputClassName}
+          placeholder={tipo === "producto" ? "Buscar producto por nombre o código…" : "Ítem o servicio"}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {tipo === "producto" && open && String(row.parametro || "").trim().length >= 2 ? (
+          <ul className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg ring-1 ring-zinc-100">
+            {resultados.length === 0 ? (
+              <li className="px-3 py-2.5 text-sm text-zinc-500">Sin coincidencias en stock.</li>
+            ) : (
+              resultados.map((p, i) => (
+                <li key={p.id_producto}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => aplicarProducto(p)}
+                    className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition ${
+                      i === highlight ? "bg-red-50" : "hover:bg-zinc-50"
+                    }`}
+                  >
+                    <span className="text-sm font-semibold text-zinc-900">{p.nombre}</span>
+                    <span className="text-xs text-zinc-500">
+                      {p.marca_nombre ? `${p.marca_nombre} · ` : ""}
+                      {p.codigo ? `${p.codigo} · ` : ""}
+                      Tarjeta ${fmtMoney(Number(p.precio_venta || 0))}
+                      {Number(p.stock) >= 0 ? ` · Stock ${p.stock}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function PresupuestosClient({
   initialList = [],
   initialDetail = null,
   initialSelectedId = 0,
+  initialProductos = [],
   listError = null,
 }) {
   const router = useRouter();
@@ -143,6 +292,11 @@ export default function PresupuestosClient({
   const [busqueda, setBusqueda] = useState("");
 
   const taller = useMemo(() => getTallerComprobanteConfig(), []);
+
+  const catalogoProductos = useMemo(
+    () => (Array.isArray(initialProductos) ? initialProductos : []),
+    [initialProductos],
+  );
 
   const lista = useMemo(
     () =>
@@ -246,6 +400,7 @@ export default function PresupuestosClient({
       lineas.map((r, i) => ({
         key: `db-${r?.id ?? i}`,
         id: r?.id != null ? Number(r.id) : null,
+        tipo: "dato",
         parametro: String(r?.parametro ?? ""),
         cantidad:
           r?.cantidad != null && String(r.cantidad).trim() !== ""
@@ -449,6 +604,31 @@ export default function PresupuestosClient({
     );
   };
 
+  const aplicarProductoEnLinea = useCallback((key, product) => {
+    const nombre = String(product?.nombre ?? "").trim();
+    if (!nombre) return;
+    const precioLista = Number(product?.precio_venta ?? 0);
+    const codigo = String(product?.codigo ?? "").trim();
+    const marca = String(product?.marca_nombre ?? "").trim();
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.key !== key) return row;
+        const notasPrev = String(row.notas || "").trim();
+        const meta = [codigo ? `Cód. ${codigo}` : "", marca ? `Marca ${marca}` : ""]
+          .filter(Boolean)
+          .join(" · ");
+        return {
+          ...row,
+          tipo: "producto",
+          parametro: nombre.slice(0, 100),
+          precio_unitario: fmtMoney(precioLista),
+          cantidad: String(row.cantidad || "").trim() || "1",
+          notas: notasPrev || meta,
+        };
+      }),
+    );
+  }, []);
+
   const imprimir = () => {
     window.print();
   };
@@ -636,6 +816,7 @@ export default function PresupuestosClient({
       const nuevas = lineasImp.map((l, i) => ({
         key: `xls-${Date.now()}-${i}`,
         id: null,
+        tipo: "dato",
         parametro: l.parametro,
         cantidad: l.cantidad,
         precio_unitario: l.precio_unitario,
@@ -944,7 +1125,8 @@ export default function PresupuestosClient({
                     <div className="border-b border-zinc-300/40 bg-zinc-100/75 px-4 py-3 sm:px-5">
                       <h2 className="text-base font-semibold text-zinc-700">Ítems del presupuesto</h2>
                       <p className="mt-1 text-sm text-zinc-500">
-                        Completá concepto, cantidad y precio. El subtotal se calcula solo.
+                        Elegí <span className="font-semibold">Producto</span> para buscar en stock (precio tarjeta/lista) o{" "}
+                        <span className="font-semibold">Dato</span> para cargar un concepto libre. Enter confirma el producto.
                       </p>
                     </div>
 
@@ -960,13 +1142,13 @@ export default function PresupuestosClient({
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
-                          <table className="w-full min-w-[52rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
+                          <table className="w-full min-w-[56rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
                             <thead className="border-b border-zinc-300/40 bg-zinc-100/80 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
                               <tr>
                                 <th className="w-10 whitespace-nowrap px-2 py-2.5 text-center font-medium text-zinc-500 sm:w-12">
                                   #
                                 </th>
-                                <th className="min-w-[10rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[32%]">
+                                <th className="min-w-[14rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[36%]">
                                   Concepto
                                 </th>
                                 <th className="w-14 whitespace-nowrap px-1 py-2.5 text-center sm:w-[7%]">Cant.</th>
@@ -976,7 +1158,7 @@ export default function PresupuestosClient({
                                 <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
                                   Subtotal
                                 </th>
-                                <th className="min-w-[9rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[29%]">Notas</th>
+                                <th className="min-w-[9rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[25%]">Notas</th>
                                 <th className="w-12 whitespace-nowrap px-1 py-2.5 text-center sm:w-14">
                                   <span className="sr-only">Quitar</span>
                                 </th>
@@ -997,14 +1179,13 @@ export default function PresupuestosClient({
                                       </span>
                                     </td>
                                     <td className="px-2 py-2 align-top">
-                                      <input
-                                        value={row.parametro}
-                                        onChange={(e) =>
-                                          actualizarCampo(row.key, "parametro", e.target.value)
-                                        }
-                                        maxLength={100}
-                                        className={inputCell}
-                                        placeholder="Ítem o servicio"
+                                      <ConceptoLineaField
+                                        row={row}
+                                        catalogo={catalogoProductos}
+                                        inputClassName={inputCell}
+                                        onTipoChange={(tipo) => actualizarCampo(row.key, "tipo", tipo)}
+                                        onParametroChange={(v) => actualizarCampo(row.key, "parametro", v)}
+                                        onPickProducto={(p) => aplicarProductoEnLinea(row.key, p)}
                                       />
                                     </td>
                                     <td className="px-1 py-2 align-top">
