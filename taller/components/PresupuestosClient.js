@@ -16,8 +16,15 @@ function parseQty(s) {
 }
 
 function parseMoneyAR(s) {
-  const t = String(s ?? "").trim().replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(t);
+  const t = String(s ?? "").trim();
+  if (!t) return 0;
+  // Formato AR: 1.250,50 o 1250,50
+  if (t.includes(",")) {
+    const n = parseFloat(t.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  }
+  // Formato simple / DB: 1250.50 (el punto es decimal)
+  const n = parseFloat(t.replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -26,6 +33,34 @@ function fmtMoney(n) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/** Precio de venta lista/tarjeta desde un producto de stock (nunca compra ni descuentos). */
+function precioVentaTarjeta(product) {
+  const raw =
+    product?.precio_venta ??
+    product?.precioVenta ??
+    product?.PrecioVenta ??
+    product?.PRECIO_VENTA;
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
+  }
+  const s = String(raw).trim();
+  if (!s) return 0;
+  if (s.includes(",")) {
+    const n = Number(s.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+/** Valor para el input de P. unit.: siempre con coma decimal, sin miles. */
+function formatPrecioUnitarioInput(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x < 0) return "0,00";
+  return (Math.round(x * 100) / 100).toFixed(2).replace(".", ",");
 }
 
 function lineSubtotal(row) {
@@ -265,7 +300,7 @@ function ConceptoLineaField({
                     <span className="text-xs text-zinc-500">
                       {p.marca_nombre ? `${p.marca_nombre} · ` : ""}
                       {p.codigo ? `${p.codigo} · ` : ""}
-                      Tarjeta ${fmtMoney(Number(p.precio_venta || 0))}
+                      Tarjeta ${fmtMoney(precioVentaTarjeta(p))}
                       {Number(p.stock) >= 0 ? ` · Stock ${p.stock}` : ""}
                     </span>
                   </button>
@@ -607,23 +642,20 @@ export default function PresupuestosClient({
   const aplicarProductoEnLinea = useCallback((key, product) => {
     const nombre = String(product?.nombre ?? "").trim();
     if (!nombre) return;
-    const precioLista = Number(product?.precio_venta ?? 0);
-    const codigo = String(product?.codigo ?? "").trim();
+    const precioTarjeta = precioVentaTarjeta(product);
     const marca = String(product?.marca_nombre ?? "").trim();
     setRows((prev) =>
       prev.map((row) => {
         if (row.key !== key) return row;
         const notasPrev = String(row.notas || "").trim();
-        const meta = [codigo ? `Cód. ${codigo}` : "", marca ? `Marca ${marca}` : ""]
-          .filter(Boolean)
-          .join(" · ");
         return {
           ...row,
           tipo: "producto",
           parametro: nombre.slice(0, 100),
-          precio_unitario: fmtMoney(precioLista),
+          // Solo precio de venta lista/tarjeta (sin descuento efectivo/transferencia)
+          precio_unitario: formatPrecioUnitarioInput(precioTarjeta),
           cantidad: String(row.cantidad || "").trim() || "1",
-          notas: notasPrev || meta,
+          notas: notasPrev || (marca ? `Marca ${marca}` : ""),
         };
       }),
     );
@@ -1154,6 +1186,9 @@ export default function PresupuestosClient({
                                 <th className="w-14 whitespace-nowrap px-1 py-2.5 text-center sm:w-[7%]">Cant.</th>
                                 <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
                                   P. unit.
+                                  <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                                    tarjeta
+                                  </span>
                                 </th>
                                 <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
                                   Subtotal

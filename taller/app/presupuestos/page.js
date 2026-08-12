@@ -36,7 +36,22 @@ export default async function PresupuestosPage(props) {
     } else {
       lista = normalizeSpList(rawList);
     }
-    productos = normalizeArray(rawProductos).filter((p) => p && p.archivado !== true);
+    productos = normalizeArray(rawProductos)
+      .filter((p) => p && p.archivado !== true)
+      .map((p) => {
+        const pvRaw = p?.precio_venta;
+        let precio_venta = 0;
+        if (typeof pvRaw === "number" && Number.isFinite(pvRaw)) {
+          precio_venta = Math.round(pvRaw * 100) / 100;
+        } else if (pvRaw != null && String(pvRaw).trim() !== "") {
+          const s = String(pvRaw).trim();
+          const n = s.includes(",")
+            ? Number(s.replace(/\./g, "").replace(",", "."))
+            : Number(s);
+          precio_venta = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+        }
+        return { ...p, precio_venta };
+      });
   } catch (e) {
     listError = e?.message || "No se pudieron cargar los presupuestos";
   }
