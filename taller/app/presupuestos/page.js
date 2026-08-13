@@ -4,6 +4,7 @@ import UserPop from "@/components/UserPop";
 import PresupuestosClient from "@/components/PresupuestosClient";
 import { exec } from "@/components/db";
 import { normalizeSpList, unwrapSpEntity } from "@/lib/execHelpers";
+import { coerceMoney } from "@/lib/moneyCoerce";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -38,20 +39,10 @@ export default async function PresupuestosPage(props) {
     }
     productos = normalizeArray(rawProductos)
       .filter((p) => p && p.archivado !== true)
-      .map((p) => {
-        const pvRaw = p?.precio_venta;
-        let precio_venta = 0;
-        if (typeof pvRaw === "number" && Number.isFinite(pvRaw)) {
-          precio_venta = Math.round(pvRaw * 100) / 100;
-        } else if (pvRaw != null && String(pvRaw).trim() !== "") {
-          const s = String(pvRaw).trim();
-          const n = s.includes(",")
-            ? Number(s.replace(/\./g, "").replace(",", "."))
-            : Number(s);
-          precio_venta = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
-        }
-        return { ...p, precio_venta };
-      });
+      .map((p) => ({
+        ...p,
+        precio_venta: coerceMoney(p?.precio_venta),
+      }));
   } catch (e) {
     listError = e?.message || "No se pudieron cargar los presupuestos";
   }

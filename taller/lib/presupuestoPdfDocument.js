@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
+import { coerceMoney } from "@/lib/moneyCoerce";
 
 const PAGE_W = 210;
 const M = 12;
@@ -8,7 +9,7 @@ const INNER_W = PAGE_W - M * 2;
 const FRAME_INSET = 4;
 
 function fmtMoney(n) {
-  const x = Number(n);
+  const x = coerceMoney(n);
   if (!Number.isFinite(x)) return "0,00";
   return x.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -36,9 +37,7 @@ function parseQty(s) {
 }
 
 function parseMoneyAR(s) {
-  const t = String(s ?? "").trim().replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(t);
-  return Number.isFinite(n) ? n : 0;
+  return coerceMoney(s);
 }
 
 function lineSubtotal(row) {
@@ -377,13 +376,17 @@ export function buildPresupuestoPdfSnapshotFromClient({
 }) {
   const lineas = (Array.isArray(rows) ? rows : [])
     .filter((row) => String(row?.parametro ?? "").trim())
-    .map((row) => ({
-      parametro: row.parametro,
-      cantidad: row.cantidad,
-      precio_unitario: row.precio_unitario,
-      notas: row.notas,
-      subtotal: lineSubtotal(row),
-    }));
+    .map((row) => {
+      const cantidad = parseQty(row.cantidad);
+      const precio_unitario = coerceMoney(row.precio_unitario);
+      return {
+        parametro: row.parametro,
+        cantidad,
+        precio_unitario,
+        notas: row.notas,
+        subtotal: cantidad * precio_unitario,
+      };
+    });
 
   return {
     taller,

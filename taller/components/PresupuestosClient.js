@@ -9,6 +9,11 @@ import {
   iniciarGeneracionPdfPresupuesto,
 } from "@/lib/presupuestoPdfShare";
 import PresupuestoExcelImportModal from "@/components/PresupuestoExcelImportModal";
+import {
+  coerceMoney,
+  formatPrecioUnitarioInput,
+  precioVentaTarjetaFromProduct,
+} from "@/lib/moneyCoerce";
 
 function parseQty(s) {
   const n = parseFloat(String(s ?? "").replace(",", "."));
@@ -16,51 +21,14 @@ function parseQty(s) {
 }
 
 function parseMoneyAR(s) {
-  const t = String(s ?? "").trim();
-  if (!t) return 0;
-  // Formato AR: 1.250,50 o 1250,50
-  if (t.includes(",")) {
-    const n = parseFloat(t.replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(n) ? n : 0;
-  }
-  // Formato simple / DB: 1250.50 (el punto es decimal)
-  const n = parseFloat(t.replace(/[^\d.-]/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  return coerceMoney(s);
 }
 
 function fmtMoney(n) {
-  return Number(n).toLocaleString("es-AR", {
+  return coerceMoney(n).toLocaleString("es-AR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-/** Precio de venta lista/tarjeta desde un producto de stock (nunca compra ni descuentos). */
-function precioVentaTarjeta(product) {
-  const raw =
-    product?.precio_venta ??
-    product?.precioVenta ??
-    product?.PrecioVenta ??
-    product?.PRECIO_VENTA;
-  if (raw == null || raw === "") return 0;
-  if (typeof raw === "number") {
-    return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
-  }
-  const s = String(raw).trim();
-  if (!s) return 0;
-  if (s.includes(",")) {
-    const n = Number(s.replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
-  }
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
-}
-
-/** Valor para el input de P. unit.: siempre con coma decimal, sin miles. */
-function formatPrecioUnitarioInput(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x) || x < 0) return "0,00";
-  return (Math.round(x * 100) / 100).toFixed(2).replace(".", ",");
 }
 
 function lineSubtotal(row) {
@@ -300,7 +268,7 @@ function ConceptoLineaField({
                     <span className="text-xs text-zinc-500">
                       {p.marca_nombre ? `${p.marca_nombre} · ` : ""}
                       {p.codigo ? `${p.codigo} · ` : ""}
-                      Tarjeta ${fmtMoney(precioVentaTarjeta(p))}
+                      Tarjeta ${fmtMoney(precioVentaTarjetaFromProduct(p))}
                       {Number(p.stock) >= 0 ? ` · Stock ${p.stock}` : ""}
                     </span>
                   </button>
@@ -328,10 +296,24 @@ export default function PresupuestosClient({
 
   const taller = useMemo(() => getTallerComprobanteConfig(), []);
 
-  const catalogoProductos = useMemo(
-    () => (Array.isArray(initialProductos) ? initialProductos : []),
-    [initialProductos],
-  );
+  const catalogoProductos = useMemo(() => {
+    const list = Array.isArray(initialProductos) ? initialProductos : [];
+    return list.map((p) => ({
+      ...p,
+      id_producto: Number(p?.id_producto),
+      precio_venta: precioVentaTarjetaFromProduct(p),
+    }));
+  }, [initialProductos]);
+
+  const catalogoById = useMemo(() => {
+    const map = new Map();
+    for (const p of catalogoProductos) {
+      if (Number.isFinite(p.id_producto) && p.id_producto > 0) {
+        map.set(p.id_producto, p);
+      }
+    }
+    return map;
+  }, [catalogoProductos]);
 
   const lista = useMemo(
     () =>
@@ -441,10 +423,7 @@ export default function PresupuestosClient({
           r?.cantidad != null && String(r.cantidad).trim() !== ""
             ? String(r.cantidad)
             : "1",
-        precio_unitario:
-          r?.precio_unitario != null && String(r.precio_unitario).trim() !== ""
-            ? String(r.precio_unitario)
-            : "",
+        precio_unitario: formatPrecioUnitarioInput(r?.precio_unitario),
         valor: String(r?.valor ?? ""),
         notas: String(r?.notas ?? ""),
         presupuesto_id: Number(d.id),
@@ -639,27 +618,35 @@ export default function PresupuestosClient({
     );
   };
 
-  const aplicarProductoEnLinea = useCallback((key, product) => {
-    const nombre = String(product?.nombre ?? "").trim();
-    if (!nombre) return;
-    const precioTarjeta = precioVentaTarjeta(product);
-    const marca = String(product?.marca_nombre ?? "").trim();
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.key !== key) return row;
-        const notasPrev = String(row.notas || "").trim();
-        return {
-          ...row,
-          tipo: "producto",
-          parametro: nombre.slice(0, 100),
-          // Solo precio de venta lista/tarjeta (sin descuento efectivo/transferencia)
-          precio_unitario: formatPrecioUnitarioInput(precioTarjeta),
-          cantidad: String(row.cantidad || "").trim() || "1",
-          notas: notasPrev || (marca ? `Marca ${marca}` : ""),
-        };
-      }),
-    );
-  }, []);
+  const aplicarProductoEnLinea = useCallback(
+    (key, product) => {
+      const id = Number(product?.id_producto);
+      const fromCatalog =
+        Number.isFinite(id) && id > 0 ? catalogoById.get(id) || product : product;
+      const nombre = String(fromCatalog?.nombre ?? product?.nombre ?? "").trim();
+      if (!nombre) return;
+
+      // Única fuente: precio_venta de stock (lista/tarjeta), ya normalizado en el catálogo
+      const precioTarjeta = precioVentaTarjetaFromProduct(fromCatalog);
+      const marca = String(fromCatalog?.marca_nombre ?? product?.marca_nombre ?? "").trim();
+
+      setRows((prev) =>
+        prev.map((row) => {
+          if (row.key !== key) return row;
+          const notasPrev = String(row.notas || "").trim();
+          return {
+            ...row,
+            tipo: "producto",
+            parametro: nombre.slice(0, 100),
+            precio_unitario: formatPrecioUnitarioInput(precioTarjeta),
+            cantidad: "1",
+            notas: notasPrev || (marca ? `Marca ${marca}` : ""),
+          };
+        }),
+      );
+    },
+    [catalogoById],
+  );
 
   const imprimir = () => {
     window.print();
@@ -851,7 +838,7 @@ export default function PresupuestosClient({
         tipo: "dato",
         parametro: l.parametro,
         cantidad: l.cantidad,
-        precio_unitario: l.precio_unitario,
+        precio_unitario: formatPrecioUnitarioInput(l.precio_unitario),
         valor: "",
         notas: l.notas || "",
         presupuesto_id: selectedId || null,
