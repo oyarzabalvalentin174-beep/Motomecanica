@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { getTallerComprobanteConfig } from "@/lib/tallerComprobante";
 import {
   buildPresupuestoPdfSnapshotFromClient,
@@ -160,6 +161,9 @@ function filtrarProductosPresupuesto(catalogo, rawTerm) {
   return scored.slice(0, 12).map((x) => x.p);
 }
 
+const SCROLLBAR_HIDDEN =
+  "scrollbar-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+
 function ConceptoLineaField({
   row,
   catalogo,
@@ -170,7 +174,10 @@ function ConceptoLineaField({
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const [mounted, setMounted] = useState(false);
   const wrapRef = useRef(null);
+  const inputRef = useRef(null);
   const tipo = row.tipo === "producto" ? "producto" : "dato";
   const resultados = useMemo(() => {
     if (tipo !== "producto") return [];
@@ -180,13 +187,65 @@ function ConceptoLineaField({
   }, [tipo, row.parametro, catalogo]);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     setHighlight(0);
   }, [row.parametro, tipo]);
+
+  const updateMenuPosition = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const maxH = 224;
+    const gap = 4;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+    const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+
+    if (openUp) {
+      setMenuStyle({
+        position: "fixed",
+        left: rect.left,
+        width: rect.width,
+        bottom: window.innerHeight - rect.top + gap,
+        maxHeight: Math.min(maxH, Math.max(spaceAbove, 120)),
+        zIndex: 9999,
+      });
+    } else {
+      setMenuStyle({
+        position: "fixed",
+        left: rect.left,
+        width: rect.width,
+        top: rect.bottom + gap,
+        maxHeight: Math.min(maxH, Math.max(spaceBelow, 120)),
+        zIndex: 9999,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return undefined;
+    }
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, row.parametro, resultados.length, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      const t = e.target;
+      if (wrapRef.current?.contains(t)) return;
+      if (t instanceof Element && t.closest("[data-presupuesto-producto-menu]")) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -198,13 +257,57 @@ function ConceptoLineaField({
     setOpen(false);
   };
 
+  const showMenu = tipo === "producto" && open && String(row.parametro || "").trim().length >= 2;
+
+  const menu =
+    showMenu && menuStyle ? (
+      <ul
+        data-presupuesto-producto-menu
+        style={menuStyle}
+        className={`overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg ring-1 ring-zinc-100 ${SCROLLBAR_HIDDEN}`}
+        role="listbox"
+      >
+        {resultados.length === 0 ? (
+          <li className="px-3 py-2.5 text-sm text-zinc-500">Sin coincidencias en stock.</li>
+        ) : (
+          resultados.map((p, i) => (
+            <li key={p.id_producto}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => aplicarProducto(p)}
+                className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition ${
+                  i === highlight ? "bg-red-50" : "hover:bg-zinc-50"
+                }`}
+              >
+                <span className="text-sm font-semibold text-zinc-900">{p.nombre}</span>
+                <span className="text-xs text-zinc-500">
+                  {p.marca_nombre ? `${p.marca_nombre} · ` : ""}
+                  {p.codigo ? `${p.codigo} · ` : ""}
+                  Tarjeta ${fmtMoney(precioVentaTarjetaFromProduct(p))}
+                  {Number(p.stock) >= 0 ? ` · Stock ${p.stock}` : ""}
+                </span>
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    ) : null;
+
   return (
     <div ref={wrapRef} className="space-y-1.5">
       <select
         value={tipo}
         onChange={(e) => {
-          onTipoChange(e.target.value);
+          const next = e.target.value;
+          onTipoChange(next);
           setOpen(false);
+          if (next === "producto") {
+            requestAnimationFrame(() => {
+              inputRef.current?.focus({ preventScroll: true });
+              inputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            });
+          }
         }}
         className="h-9 w-full rounded-lg border border-zinc-300/55 bg-white px-2 text-sm font-semibold text-zinc-800 outline-none focus:border-red-400/70 focus:ring-2 focus:ring-red-500/10"
         aria-label="Tipo de ítem"
@@ -214,6 +317,7 @@ function ConceptoLineaField({
       </select>
       <div className="relative">
         <input
+          ref={inputRef}
           value={row.parametro}
           onChange={(e) => {
             onParametroChange(e.target.value);
@@ -249,34 +353,7 @@ function ConceptoLineaField({
           autoComplete="off"
           spellCheck={false}
         />
-        {tipo === "producto" && open && String(row.parametro || "").trim().length >= 2 ? (
-          <ul className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg ring-1 ring-zinc-100">
-            {resultados.length === 0 ? (
-              <li className="px-3 py-2.5 text-sm text-zinc-500">Sin coincidencias en stock.</li>
-            ) : (
-              resultados.map((p, i) => (
-                <li key={p.id_producto}>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => aplicarProducto(p)}
-                    className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition ${
-                      i === highlight ? "bg-red-50" : "hover:bg-zinc-50"
-                    }`}
-                  >
-                    <span className="text-sm font-semibold text-zinc-900">{p.nombre}</span>
-                    <span className="text-xs text-zinc-500">
-                      {p.marca_nombre ? `${p.marca_nombre} · ` : ""}
-                      {p.codigo ? `${p.codigo} · ` : ""}
-                      Tarjeta ${fmtMoney(precioVentaTarjetaFromProduct(p))}
-                      {Number(p.stock) >= 0 ? ` · Stock ${p.stock}` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        ) : null}
+        {mounted && menu ? createPortal(menu, document.body) : null}
       </div>
     </div>
   );
@@ -941,7 +1018,7 @@ export default function PresupuestosClient({
                     Importar Excel
                   </button>
                 </div>
-                <div className="mt-4 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-zinc-300/45 bg-zinc-100/70 p-2">
+                <div className={`mt-4 max-h-[min(420px,55vh)] overflow-y-auto rounded-xl border border-zinc-300/45 bg-zinc-100/70 p-2 ${SCROLLBAR_HIDDEN}`}>
                   {!hayListaSistema ? (
                     <p className="px-2 py-8 text-center text-base text-zinc-500">
                       Todavía no hay presupuestos. Creá el primero con «Nuevo presupuesto».
@@ -1054,6 +1131,221 @@ export default function PresupuestosClient({
                     </div>
                   </div>
 
+                  <section className={`${cardSurface} p-0`}>
+                    <div className="border-b border-zinc-300/40 bg-zinc-100/75 px-4 py-3 sm:px-5">
+                      <h2 className="text-base font-semibold text-zinc-700">Ítems del presupuesto</h2>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Elegí <span className="font-semibold">Producto</span> para buscar en stock (precio tarjeta/lista) o{" "}
+                        <span className="font-semibold">Dato</span> para cargar un concepto libre. Enter confirma el producto.
+                      </p>
+                    </div>
+
+                    <div className="overflow-visible p-0 sm:p-0">
+                      {rows.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+                          <p className="max-w-sm text-base text-zinc-600">
+                            Agregá líneas de mano de obra, repuestos, etc.
+                          </p>
+                          <button type="button" onClick={agregarLinea} className={btnSecundario}>
+                            + Agregar ítem
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={`overflow-x-auto ${SCROLLBAR_HIDDEN}`}>
+                          <table className="w-full min-w-[56rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
+                            <thead className="border-b border-zinc-300/40 bg-zinc-100/80 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
+                              <tr>
+                                <th className="w-10 whitespace-nowrap px-2 py-2.5 text-center font-medium text-zinc-500 sm:w-12">
+                                  #
+                                </th>
+                                <th className="min-w-[14rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[36%]">
+                                  Concepto
+                                </th>
+                                <th className="w-14 whitespace-nowrap px-1 py-2.5 text-center sm:w-[7%]">Cant.</th>
+                                <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
+                                  P. unit.
+                                  <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                                    tarjeta
+                                  </span>
+                                </th>
+                                <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
+                                  Subtotal
+                                </th>
+                                <th className="min-w-[9rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[25%]">Notas</th>
+                                <th className="w-12 whitespace-nowrap px-1 py-2.5 text-center sm:w-14">
+                                  <span className="sr-only">Quitar</span>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((row, idx) => {
+                                const sub = lineSubtotal(row);
+                                const tieneConcepto = Boolean(String(row.parametro || "").trim());
+                                return (
+                                  <tr
+                                    key={row.key}
+                                    className={`border-b border-zinc-300/30 align-top ${idx % 2 === 1 ? "bg-zinc-100/50" : "bg-zinc-50/80"}`}
+                                  >
+                                    <td className="px-2 py-2 text-center align-top">
+                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-200/55 text-sm font-bold tabular-nums text-zinc-600">
+                                        {idx + 1}
+                                      </span>
+                                    </td>
+                                    <td className="relative z-10 overflow-visible px-2 py-2 align-top">
+                                      <ConceptoLineaField
+                                        row={row}
+                                        catalogo={catalogoProductos}
+                                        inputClassName={inputCell}
+                                        onTipoChange={(tipo) => actualizarCampo(row.key, "tipo", tipo)}
+                                        onParametroChange={(v) => actualizarCampo(row.key, "parametro", v)}
+                                        onPickProducto={(p) => aplicarProductoEnLinea(row.key, p)}
+                                      />
+                                    </td>
+                                    <td className="px-1 py-2 align-top">
+                                      <input
+                                        value={row.cantidad}
+                                        onChange={(e) =>
+                                          actualizarCampo(row.key, "cantidad", e.target.value)
+                                        }
+                                        inputMode="decimal"
+                                        className={inputCellCompact}
+                                        placeholder="1"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2 align-top">
+                                      <input
+                                        value={row.precio_unitario}
+                                        onChange={(e) =>
+                                          actualizarCampo(row.key, "precio_unitario", e.target.value)
+                                        }
+                                        inputMode="decimal"
+                                        className={inputCellCompact}
+                                        placeholder="0"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2 align-top">
+                                      <div
+                                        className={`flex min-h-10 items-center justify-end rounded-lg border border-zinc-300/35 bg-zinc-100/70 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
+                                      >
+                                        ${fmtMoney(tieneConcepto ? sub : 0)}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2 align-top">
+                                      <textarea
+                                        value={row.notas}
+                                        onChange={(e) =>
+                                          actualizarCampo(row.key, "notas", e.target.value)
+                                        }
+                                        rows={2}
+                                        className={`min-h-[3.25rem] max-h-36 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-2 py-2 text-sm leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10 ${SCROLLBAR_HIDDEN}`}
+                                        placeholder="Detalle"
+                                      />
+                                    </td>
+                                    <td className="px-1 py-2 align-top">
+                                      <button
+                                        type="button"
+                                        aria-label="Quitar línea"
+                                        title="Quitar línea"
+                                        onClick={() => eliminarLinea(row)}
+                                        className="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-red-300/45 bg-red-50/70 px-1 py-1.5 text-base font-bold text-red-800 transition hover:bg-red-100/70"
+                                      >
+                                        ×
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr>
+                                <td colSpan={7} className="border-t border-zinc-300/40 bg-zinc-100/65 px-3 py-3">
+                                  <button
+                                    type="button"
+                                    onClick={agregarLinea}
+                                    className="w-full rounded-lg border border-dashed border-zinc-400/50 bg-zinc-50/90 py-2.5 text-base font-semibold text-zinc-800 transition hover:border-emerald-500/50 hover:bg-emerald-50/80 hover:text-emerald-900"
+                                  >
+                                    + Agregar ítem
+                                  </button>
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+              {rows.length > 0 ? (
+                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-300/40 bg-zinc-100/70 px-4 py-3 sm:px-5">
+                  {montoSena > 0 ? (
+                    <p className="text-base font-semibold tabular-nums text-zinc-700">
+                      Saldo pendiente:{" "}
+                      <span className="text-zinc-900">${fmtMoney(saldoPendiente)}</span>
+                    </p>
+                  ) : null}
+                  <p className="text-lg font-bold tabular-nums text-zinc-900">
+                    Total presupuesto:{" "}
+                    <span className="text-emerald-800">${fmtMoney(totalGeneral)}</span>
+                  </p>
+                </div>
+              ) : null}
+              <div className="border-t border-zinc-300/40 bg-zinc-50/85 px-4 py-4 sm:px-5">
+                <h3 className="text-base font-semibold text-zinc-700">Entregas</h3>
+                {entregas.length > 0 ? (
+                  <div className={`mt-2 overflow-x-auto rounded-lg border border-zinc-300/40 ${SCROLLBAR_HIDDEN}`}>
+                    <table className="w-full min-w-[420px] text-left text-sm">
+                      <thead className="bg-zinc-100/70 text-zinc-600">
+                        <tr>
+                          <th className="px-3 py-2">Fecha y hora</th>
+                          <th className="px-3 py-2 text-right">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entregas.map((e) => (
+                          <tr key={e.key} className="border-t border-zinc-100">
+                            <td className="px-3 py-2 text-zinc-700">
+                              {e.fecha_registro
+                                ? new Date(e.fecha_registro).toLocaleString("es-AR")
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-zinc-900">
+                              ${fmtMoney(e.monto)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-zinc-500">
+                    Todavía no hay entregas registradas para este presupuesto.
+                  </p>
+                )}
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(160px,220px)_auto] sm:items-end">
+                  <label className="block text-base font-semibold text-zinc-600">
+                    Nueva entrega ($)
+                    <input
+                      value={nuevaEntregaMonto}
+                      onChange={(e) => setNuevaEntregaMonto(e.target.value)}
+                      inputMode="decimal"
+                      className={`mt-1 ${inputCell} tabular-nums`}
+                      placeholder="0"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={guardarNuevaEntrega}
+                    className="min-h-11 rounded-lg border border-emerald-300/50 bg-emerald-50/80 px-4 py-2 text-base font-semibold text-emerald-800 transition hover:bg-emerald-100/70"
+                  >
+                    + Registrar entrega
+                  </button>
+                </div>
+                {!selectedId ? (
+                  <p className="mt-2 text-sm text-zinc-500">
+                    En un presupuesto nuevo, la primera entrega se guarda al tocar «Guardar».
+                  </p>
+                ) : null}
+              </div>
+            </section>
+
                   <section className={cardSurface}>
                     <h2 className="text-base font-semibold text-zinc-700">Cliente y notas</h2>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1139,221 +1431,6 @@ export default function PresupuestosClient({
                       </div>
                     </details>
                   </section>
-
-                  <section className={`${cardSurface} overflow-hidden p-0`}>
-                    <div className="border-b border-zinc-300/40 bg-zinc-100/75 px-4 py-3 sm:px-5">
-                      <h2 className="text-base font-semibold text-zinc-700">Ítems del presupuesto</h2>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Elegí <span className="font-semibold">Producto</span> para buscar en stock (precio tarjeta/lista) o{" "}
-                        <span className="font-semibold">Dato</span> para cargar un concepto libre. Enter confirma el producto.
-                      </p>
-                    </div>
-
-                    <div className="p-0 sm:p-0">
-                      {rows.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-                          <p className="max-w-sm text-base text-zinc-600">
-                            Agregá líneas de mano de obra, repuestos, etc.
-                          </p>
-                          <button type="button" onClick={agregarLinea} className={btnSecundario}>
-                            + Agregar ítem
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[56rem] table-auto border-collapse text-left text-sm sm:min-w-0 sm:table-fixed sm:text-base">
-                            <thead className="border-b border-zinc-300/40 bg-zinc-100/80 text-xs font-semibold uppercase tracking-wide text-zinc-600 sm:text-sm">
-                              <tr>
-                                <th className="w-10 whitespace-nowrap px-2 py-2.5 text-center font-medium text-zinc-500 sm:w-12">
-                                  #
-                                </th>
-                                <th className="min-w-[14rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[36%]">
-                                  Concepto
-                                </th>
-                                <th className="w-14 whitespace-nowrap px-1 py-2.5 text-center sm:w-[7%]">Cant.</th>
-                                <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
-                                  P. unit.
-                                  <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
-                                    tarjeta
-                                  </span>
-                                </th>
-                                <th className="w-[6.5rem] whitespace-nowrap px-2 py-2.5 text-right sm:w-[12%]">
-                                  Subtotal
-                                </th>
-                                <th className="min-w-[9rem] px-2 py-2.5 text-left sm:min-w-0 sm:w-[25%]">Notas</th>
-                                <th className="w-12 whitespace-nowrap px-1 py-2.5 text-center sm:w-14">
-                                  <span className="sr-only">Quitar</span>
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map((row, idx) => {
-                                const sub = lineSubtotal(row);
-                                const tieneConcepto = Boolean(String(row.parametro || "").trim());
-                                return (
-                                  <tr
-                                    key={row.key}
-                                    className={`border-b border-zinc-300/30 align-top ${idx % 2 === 1 ? "bg-zinc-100/50" : "bg-zinc-50/80"}`}
-                                  >
-                                    <td className="px-2 py-2 text-center align-top">
-                                      <span className="inline-flex min-h-9 min-w-8 items-center justify-center rounded-md bg-zinc-200/55 text-sm font-bold tabular-nums text-zinc-600">
-                                        {idx + 1}
-                                      </span>
-                                    </td>
-                                    <td className="px-2 py-2 align-top">
-                                      <ConceptoLineaField
-                                        row={row}
-                                        catalogo={catalogoProductos}
-                                        inputClassName={inputCell}
-                                        onTipoChange={(tipo) => actualizarCampo(row.key, "tipo", tipo)}
-                                        onParametroChange={(v) => actualizarCampo(row.key, "parametro", v)}
-                                        onPickProducto={(p) => aplicarProductoEnLinea(row.key, p)}
-                                      />
-                                    </td>
-                                    <td className="px-1 py-2 align-top">
-                                      <input
-                                        value={row.cantidad}
-                                        onChange={(e) =>
-                                          actualizarCampo(row.key, "cantidad", e.target.value)
-                                        }
-                                        inputMode="decimal"
-                                        className={inputCellCompact}
-                                        placeholder="1"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-2 align-top">
-                                      <input
-                                        value={row.precio_unitario}
-                                        onChange={(e) =>
-                                          actualizarCampo(row.key, "precio_unitario", e.target.value)
-                                        }
-                                        inputMode="decimal"
-                                        className={inputCellCompact}
-                                        placeholder="0"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-2 align-top">
-                                      <div
-                                        className={`flex min-h-10 items-center justify-end rounded-lg border border-zinc-300/35 bg-zinc-100/70 px-2 text-sm font-semibold tabular-nums text-zinc-800 sm:text-base ${tieneConcepto ? "" : "text-zinc-400"}`}
-                                      >
-                                        ${fmtMoney(tieneConcepto ? sub : 0)}
-                                      </div>
-                                    </td>
-                                    <td className="px-2 py-2 align-top">
-                                      <textarea
-                                        value={row.notas}
-                                        onChange={(e) =>
-                                          actualizarCampo(row.key, "notas", e.target.value)
-                                        }
-                                        rows={2}
-                                        className="min-h-[3.25rem] max-h-36 w-full resize-y rounded-lg border border-zinc-300/55 bg-zinc-100/75 px-2 py-2 text-sm leading-relaxed text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-red-400/70 focus:bg-zinc-50/95 focus:ring-2 focus:ring-red-500/10"
-                                        placeholder="Detalle"
-                                      />
-                                    </td>
-                                    <td className="px-1 py-2 align-top">
-                                      <button
-                                        type="button"
-                                        aria-label="Quitar línea"
-                                        title="Quitar línea"
-                                        onClick={() => eliminarLinea(row)}
-                                        className="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-red-300/45 bg-red-50/70 px-1 py-1.5 text-base font-bold text-red-800 transition hover:bg-red-100/70"
-                                      >
-                                        ×
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                            <tfoot>
-                              <tr>
-                                <td colSpan={7} className="border-t border-zinc-300/40 bg-zinc-100/65 px-3 py-3">
-                                  <button
-                                    type="button"
-                                    onClick={agregarLinea}
-                                    className="w-full rounded-lg border border-dashed border-zinc-400/50 bg-zinc-50/90 py-2.5 text-base font-semibold text-zinc-800 transition hover:border-emerald-500/50 hover:bg-emerald-50/80 hover:text-emerald-900"
-                                  >
-                                    + Agregar ítem
-                                  </button>
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-              {rows.length > 0 ? (
-                <div className="flex shrink-0 flex-col items-end gap-0.5 border-t border-zinc-300/40 bg-zinc-100/70 px-4 py-3 sm:px-5">
-                  {montoSena > 0 ? (
-                    <p className="text-base font-semibold tabular-nums text-zinc-700">
-                      Saldo pendiente:{" "}
-                      <span className="text-zinc-900">${fmtMoney(saldoPendiente)}</span>
-                    </p>
-                  ) : null}
-                  <p className="text-lg font-bold tabular-nums text-zinc-900">
-                    Total presupuesto:{" "}
-                    <span className="text-emerald-800">${fmtMoney(totalGeneral)}</span>
-                  </p>
-                </div>
-              ) : null}
-              <div className="border-t border-zinc-300/40 bg-zinc-50/85 px-4 py-4 sm:px-5">
-                <h3 className="text-base font-semibold text-zinc-700">Entregas</h3>
-                {entregas.length > 0 ? (
-                  <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-300/40">
-                    <table className="w-full min-w-[420px] text-left text-sm">
-                      <thead className="bg-zinc-100/70 text-zinc-600">
-                        <tr>
-                          <th className="px-3 py-2">Fecha y hora</th>
-                          <th className="px-3 py-2 text-right">Monto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {entregas.map((e) => (
-                          <tr key={e.key} className="border-t border-zinc-100">
-                            <td className="px-3 py-2 text-zinc-700">
-                              {e.fecha_registro
-                                ? new Date(e.fecha_registro).toLocaleString("es-AR")
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-zinc-900">
-                              ${fmtMoney(e.monto)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-zinc-500">
-                    Todavía no hay entregas registradas para este presupuesto.
-                  </p>
-                )}
-                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(160px,220px)_auto] sm:items-end">
-                  <label className="block text-base font-semibold text-zinc-600">
-                    Nueva entrega ($)
-                    <input
-                      value={nuevaEntregaMonto}
-                      onChange={(e) => setNuevaEntregaMonto(e.target.value)}
-                      inputMode="decimal"
-                      className={`mt-1 ${inputCell} tabular-nums`}
-                      placeholder="0"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={guardarNuevaEntrega}
-                    className="min-h-11 rounded-lg border border-emerald-300/50 bg-emerald-50/80 px-4 py-2 text-base font-semibold text-emerald-800 transition hover:bg-emerald-100/70"
-                  >
-                    + Registrar entrega
-                  </button>
-                </div>
-                {!selectedId ? (
-                  <p className="mt-2 text-sm text-zinc-500">
-                    En un presupuesto nuevo, la primera entrega se guarda al tocar «Guardar».
-                  </p>
-                ) : null}
-              </div>
-            </section>
                 </>
           </div>
           ) : null}

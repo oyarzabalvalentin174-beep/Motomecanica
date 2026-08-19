@@ -40,13 +40,18 @@ export function resolveGraficos12Range({
     d.setDate(d.getDate() - diff);
     desde = ymdLocal(d);
     const end = new Date(`${desde}T12:00:00`);
-    end.setDate(end.getDate() + 6);
+    end.setDate(end.getDate() + 4);
     hasta = ymdLocal(end);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+    if (hasta > today) hasta = today;
   } else if (p === "ultimomes") {
     const end = new Date(`${ref}T12:00:00`);
     const start = new Date(end.getFullYear(), end.getMonth(), 1);
+    const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0);
     desde = ymdLocal(start);
-    hasta = ref;
+    const monthEnd = ymdLocal(lastDay);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+    hasta = monthEnd > today ? today : monthEnd;
   } else if (p === "anio") {
     const end = new Date(`${ref}T12:00:00`);
     end.setDate(end.getDate() - 364);

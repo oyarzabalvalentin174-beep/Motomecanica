@@ -46,6 +46,65 @@ function todayYmd() {
   return `${y}-${m}-${day}`;
 }
 
+function ymdToMonth(ymd) {
+  return String(ymd ?? "").slice(0, 7);
+}
+
+function monthToLastDayYmd(ym) {
+  if (!/^\d{4}-\d{2}$/.test(String(ym ?? ""))) return todayYmd();
+  const [y, m] = ym.split("-").map(Number);
+  const last = new Date(y, m, 0);
+  return ymdFromParts(last.getFullYear(), last.getMonth() + 1, last.getDate());
+}
+
+function ymdFromParts(y, m, day) {
+  return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function capYmdAtToday(ymd) {
+  const today = todayYmd();
+  return ymd > today ? today : ymd;
+}
+
+function mondayOfWeek(ymd) {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return todayYmd();
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return ymdFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+function fridayOfWeekFromMonday(mondayYmd) {
+  const d = new Date(`${mondayYmd}T12:00:00`);
+  d.setDate(d.getDate() + 4);
+  return ymdFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+function currentWeekMonFri() {
+  const mon = mondayOfWeek(todayYmd());
+  const fri = capYmdAtToday(fridayOfWeekFromMonday(mon));
+  return { desde: mon, hasta: fri };
+}
+
+function syncSemanaRange(anchorYmd) {
+  const mon = mondayOfWeek(anchorYmd);
+  const fri = capYmdAtToday(fridayOfWeekFromMonday(mon));
+  return { desde: mon, hasta: fri };
+}
+
+function formatDayShort(ymd) {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return String(ymd ?? "");
+  return d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
+}
+
+function formatMonthLabel(ymd) {
+  const [y, m] = ymdToMonth(ymd).split("-").map(Number);
+  if (!y || !m) return String(ymd ?? "");
+  return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+}
+
 function metodoLabel(m) {
   const s = String(m ?? "").trim();
   if (!s || s === "sin_definir") return "Sin definir";
@@ -77,12 +136,27 @@ function shortName(n, max = 18) {
   return `${s.slice(0, max - 1)}…`;
 }
 
-function periodoSubtitle(periodo, fecha) {
+function periodoSubtitle(periodo, fecha, semanaDesde, semanaHasta) {
   if (periodo === "dia") return fecha ? `Suma facturada por hora · ${fecha}` : "Suma facturada por hora del día";
-  if (periodo === "semana") return "Suma facturada por día en la semana (lun–dom)";
-  if (periodo === "ultimomes") return "Suma facturada semana a semana del mes en curso";
-  if (periodo === "mes") return "Suma facturada por mes (últimos 12 meses)";
-  return "Suma facturada por mes (últimos 12 meses)";
+  if (periodo === "semana") {
+    if (semanaDesde && semanaHasta) {
+      return `Suma facturada por día · ${formatDayShort(semanaDesde)} → ${formatDayShort(semanaHasta)}`;
+    }
+    return "Suma facturada por día · lunes a viernes";
+  }
+  if (periodo === "ultimomes") {
+    return fecha
+      ? `Suma facturada semana a semana · ${formatMonthLabel(fecha)}`
+      : "Suma facturada semana a semana del mes";
+  }
+  if (periodo === "mes") {
+    return fecha
+      ? `Suma facturada por mes · 12 meses hasta ${formatMonthLabel(fecha)}`
+      : "Suma facturada por mes (últimos 12 meses)";
+  }
+  return fecha
+    ? `Suma facturada por mes · 12 meses hasta ${formatMonthLabel(fecha)}`
+    : "Suma facturada por mes (últimos 12 meses)";
 }
 
 function ChartCard({ title, subtitle, children, className = "", tall = false, accent = "red" }) {
@@ -155,7 +229,41 @@ function KpiCard({ label, value, hint, accent = "red" }) {
   );
 }
 
-function PeriodFilters({ periodo, setPeriodo, fecha, setFecha, onApply, onSelectPeriodo, loading, compact = false }) {
+function PeriodFilters({
+  periodo,
+  setPeriodo,
+  fecha,
+  setFecha,
+  semanaDesde,
+  semanaHasta,
+  setSemanaDesde,
+  setSemanaHasta,
+  onApply,
+  onSelectPeriodo,
+  onFechaChange,
+  onSemanaChange,
+  loading,
+  compact = false,
+}) {
+  const pickerLabel =
+    periodo === "dia"
+      ? "Día"
+      : periodo === "ultimomes"
+        ? "Mes"
+        : periodo === "mes" || periodo === "anio"
+          ? "Mes de referencia"
+          : null;
+
+  const usesMonthPicker = periodo === "ultimomes" || periodo === "mes" || periodo === "anio";
+  const usesDatePicker = periodo === "dia";
+
+  const applySemana = (anchorYmd) => {
+    const { desde, hasta } = syncSemanaRange(anchorYmd);
+    setSemanaDesde(desde);
+    setSemanaHasta(hasta);
+    onSemanaChange?.(desde, hasta);
+  };
+
   return (
     <div
       className={`flex flex-col gap-3 ${compact ? "" : "rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 sm:flex-row sm:flex-wrap sm:items-end"}`}
@@ -179,13 +287,70 @@ function PeriodFilters({ periodo, setPeriodo, fecha, setFecha, onApply, onSelect
           </button>
         ))}
       </div>
-      {periodo === "dia" ? (
-        <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[140px]">
-          Fecha
+      {periodo === "semana" ? (
+        <>
+          <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[150px]">
+            Lunes
+            <input
+              type="date"
+              value={semanaDesde}
+              max={todayYmd()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                applySemana(v);
+              }}
+              className="mt-1 w-full min-h-[40px] rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
+            />
+          </label>
+          <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[150px]">
+            Viernes
+            <input
+              type="date"
+              value={semanaHasta}
+              min={semanaDesde}
+              max={capYmdAtToday(fridayOfWeekFromMonday(semanaDesde))}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                applySemana(v);
+              }}
+              className="mt-1 w-full min-h-[40px] rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
+            />
+          </label>
+        </>
+      ) : null}
+      {usesDatePicker ? (
+        <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[160px]">
+          {pickerLabel}
           <input
             type="date"
             value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
+            max={todayYmd()}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              setFecha(v);
+              onFechaChange?.(v);
+            }}
+            className="mt-1 w-full min-h-[40px] rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
+          />
+        </label>
+      ) : null}
+      {usesMonthPicker ? (
+        <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[160px]">
+          {pickerLabel}
+          <input
+            type="month"
+            value={ymdToMonth(fecha)}
+            max={ymdToMonth(todayYmd())}
+            onChange={(e) => {
+              const ym = e.target.value;
+              if (!ym) return;
+              const v = capYmdAtToday(monthToLastDayYmd(ym));
+              setFecha(v);
+              onFechaChange?.(v);
+            }}
             className="mt-1 w-full min-h-[40px] rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
           />
         </label>
@@ -257,22 +422,35 @@ export default function ReportesGraficosClient({
   const [loading34, setLoading34] = useState(false);
   const [periodo, setPeriodo] = useState("mes");
   const [fecha, setFecha] = useState(todayYmd());
+  const [semanaDesde, setSemanaDesde] = useState(() => currentWeekMonFri().desde);
+  const [semanaHasta, setSemanaHasta] = useState(() => currentWeekMonFri().hasta);
 
-  const buildPeriodQs = useCallback((periodoVal, fechaVal) => {
+  const buildPeriodQs = useCallback((periodoVal, fechaVal, desdeVal, hastaVal) => {
     const p = new URLSearchParams({ periodo: periodoVal });
-    if (periodoVal === "dia" && fechaVal) p.set("fecha", fechaVal);
+    if (periodoVal === "semana" && desdeVal && hastaVal) {
+      p.set("desde", desdeVal);
+      p.set("hasta", hastaVal);
+    } else if (fechaVal) {
+      p.set("fecha", fechaVal);
+    }
     return `?${p.toString()}`;
   }, []);
 
   /** Solo actualiza la serie de Ventas facturadas; no toca métodos de pago ni el resto. */
   const refreshVentasSerie = useCallback(
-    async (periodoOverride, fechaOverride) => {
+    async (periodoOverride, fechaOverride, semanaOverride) => {
       const periodoVal = periodoOverride ?? periodo;
       const fechaVal = fechaOverride ?? fecha;
+      const semDesde = semanaOverride?.desde ?? semanaDesde;
+      const semHasta = semanaOverride?.hasta ?? semanaHasta;
       setLoading34(true);
       setErr34(null);
       try {
-        const r = await fetch(`/api/reportes/graficos-34${buildPeriodQs(periodoVal, fechaVal)}`, {
+        const qs =
+          periodoVal === "semana"
+            ? buildPeriodQs(periodoVal, null, semDesde, semHasta)
+            : buildPeriodQs(periodoVal, fechaVal);
+        const r = await fetch(`/api/reportes/graficos-34${qs}`, {
           credentials: "include",
         });
         const j = await r.json().catch(() => ({}));
@@ -293,7 +471,7 @@ export default function ReportesGraficosClient({
         setLoading34(false);
       }
     },
-    [periodo, fecha, buildPeriodQs],
+    [periodo, fecha, semanaDesde, semanaHasta, buildPeriodQs],
   );
 
   const stockMas = Array.isArray(data12?.stock_mas) ? data12.stock_mas : [];
@@ -545,7 +723,7 @@ export default function ReportesGraficosClient({
       <div className="mb-8">
         <ChartCard
           title="Ventas facturadas"
-          subtitle={periodoSubtitle(periodo, fecha)}
+          subtitle={periodoSubtitle(periodo, fecha, semanaDesde, semanaHasta)}
           className="overflow-visible"
         >
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -559,7 +737,22 @@ export default function ReportesGraficosClient({
               setPeriodo={setPeriodo}
               fecha={fecha}
               setFecha={setFecha}
-              onSelectPeriodo={(id) => void refreshVentasSerie(id, fecha)}
+              semanaDesde={semanaDesde}
+              semanaHasta={semanaHasta}
+              setSemanaDesde={setSemanaDesde}
+              setSemanaHasta={setSemanaHasta}
+              onSelectPeriodo={(id) => {
+                if (id === "semana") {
+                  const w = currentWeekMonFri();
+                  setSemanaDesde(w.desde);
+                  setSemanaHasta(w.hasta);
+                  void refreshVentasSerie(id, fecha, w);
+                } else {
+                  void refreshVentasSerie(id, fecha);
+                }
+              }}
+              onFechaChange={(f) => void refreshVentasSerie(periodo, f)}
+              onSemanaChange={(desde, hasta) => void refreshVentasSerie("semana", null, { desde, hasta })}
               onApply={() => void refreshVentasSerie()}
               loading={loading34}
             />

@@ -36,6 +36,16 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Scroll funcional sin barra visible */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 /* Impresión: solo la hoja marcada (resto del layout queda oculto) */
 @media print {
   @page {
