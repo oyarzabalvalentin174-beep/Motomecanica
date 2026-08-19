@@ -6,6 +6,7 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import ModalPagoVenta from "@/components/ModalPagoVenta";
 import { clearVentaCart, readVentaCart, writeVentaCart } from "@/lib/ventaCartBridge";
+import { normalizeProductoImagenSrc } from "@/lib/productoImagen";
 
 function money(n) {
   const x = Number(n);
@@ -678,11 +679,20 @@ export default function VentaClient({ initialProductos = [], listError = null })
                     : "Escribí al menos 2 caracteres o buscá por código / código de barras."}
                 </li>
               ) : (
-                resultados.map((p) => (
+                resultados.map((p) => {
+                  const fotoSrc = normalizeProductoImagenSrc(p.imagen);
+                  return (
                   <li
                     key={p.id_producto}
                     className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-50/80"
                   >
+                    {fotoSrc ? (
+                      <img src={fotoSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg border border-zinc-200 object-cover" />
+                    ) : (
+                      <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-semibold text-zinc-400">
+                        —
+                      </span>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base font-medium text-zinc-900">{p.nombre}</p>
                       <p className="text-sm font-medium text-zinc-700">
@@ -712,7 +722,8 @@ export default function VentaClient({ initialProductos = [], listError = null })
                       </button>
                     </div>
                   </li>
-                ))
+                  );
+                })
               )}
             </ul>
           </div>
@@ -803,6 +814,13 @@ export default function VentaClient({ initialProductos = [], listError = null })
               {descProduct.marca_nombre ? `Marca: ${descProduct.marca_nombre}` : "Sin marca"}
               {descProduct.codigo ? ` · Código: ${descProduct.codigo}` : ""}
             </p>
+            {normalizeProductoImagenSrc(descProduct.imagen) ? (
+              <img
+                src={normalizeProductoImagenSrc(descProduct.imagen)}
+                alt={descProduct.nombre}
+                className="mt-4 max-h-56 w-full rounded-xl border border-zinc-200 bg-zinc-50 object-contain"
+              />
+            ) : null}
             <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700 whitespace-pre-wrap">
               {descProduct.descripcion || "Este producto no tiene descripción."}
             </div>

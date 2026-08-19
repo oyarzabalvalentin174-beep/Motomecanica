@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { addProductToVentaCart } from "@/lib/ventaCartBridge";
+import { captureVideoFrame, compressImageFile, normalizeProductoImagenSrc } from "@/lib/productoImagen";
 
 const EMPTY_FORM = {
   id_producto: null,
@@ -18,6 +19,7 @@ const EMPTY_FORM = {
   precio_venta: "",
   precio_compra: "",
   stock_minimo: "",
+  imagen: "",
 };
 
 const PAGE_SIZE = 10;
@@ -172,6 +174,7 @@ function toForm(row) {
     precio_venta: String(row?.precio_venta ?? 0),
     precio_compra: String(row?.precio_compra ?? 0),
     stock_minimo: String(row?.stock_minimo ?? 5),
+    imagen: String(row?.imagen ?? "").trim(),
   };
 }
 
@@ -205,6 +208,7 @@ function mapPayload(formState) {
     precio_venta: cleanNumber(formState.precio_venta, 0),
     precio_compra: cleanNumber(formState.precio_compra, 0),
     stock_minimo: cleanNumber(formState.stock_minimo, 0),
+    imagen: String(formState.imagen || "").trim() || null,
   };
 }
 
@@ -236,6 +240,9 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const videoScanRef = useRef(null);
   const scanControlsRef = useRef(null);
   const lastDetectedRef = useRef({ code: "", at: 0 });
+  const fileInputRef = useRef(null);
+  const videoPhotoRef = useRef(null);
+  const photoStreamRef = useRef(null);
   const [isPending, startTransition] = useTransition();
   const [banner, setBanner] = useState(null);
   const [q, setQ] = useState("");
@@ -247,11 +254,16 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   const [showForm, setShowForm] = useState(false);
   const [descProduct, setDescProduct] = useState(null);
   const [priceProduct, setPriceProduct] = useState(null);
+  const [previewImagen, setPreviewImagen] = useState(null);
   const [formState, setFormState] = useState(EMPTY_FORM);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanTarget, setScanTarget] = useState("form");
   const [scanError, setScanError] = useState(null);
   const [scanReady, setScanReady] = useState(false);
+  const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
+  const [photoCameraError, setPhotoCameraError] = useState(null);
+  const [photoCameraReady, setPhotoCameraReady] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
 
   const marcasOptions = useMemo(
     () =>
@@ -359,6 +371,7 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
   };
 
   const abrirCamaraEscaner = useCallback((target = "form") => {
+    setPhotoCameraOpen(false);
     setScanTarget(target);
     setScanError(null);
     setScanReady(false);
@@ -448,6 +461,123 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
       setScanReady(false);
     };
   }, [cameraOpen, handleDetectedCode]);
+
+  const aplicarImagen = useCallback((dataUrl) => {
+    setFormState((prev) => ({ ...prev, imagen: dataUrl }));
+  }, []);
+
+  const quitarImagen = useCallback(() => {
+    setFormState((prev) => ({ ...prev, imagen: "" }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const onPickImagenArchivo = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImageBusy(true);
+    setBanner(null);
+    try {
+      const dataUrl = await compressImageFile(file);
+      aplicarImagen(dataUrl);
+    } catch (err) {
+      setBanner({ type: "err", text: err?.message || "No se pudo usar esa imagen." });
+    } finally {
+      setImageBusy(false);
+    }
+  }, [aplicarImagen]);
+
+  const abrirCamaraFoto = useCallback(() => {
+    setCameraOpen(false);
+    setPhotoCameraError(null);
+    setPhotoCameraReady(false);
+    setPhotoCameraOpen(true);
+  }, []);
+
+  const cerrarCamaraFoto = useCallback(() => {
+    setPhotoCameraOpen(false);
+    setPhotoCameraReady(false);
+    const stream = photoStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      photoStreamRef.current = null;
+    }
+    const v = videoPhotoRef.current;
+    if (v) {
+      v.pause();
+      v.srcObject = null;
+    }
+  }, []);
+
+  const capturarFotoCamara = useCallback(async () => {
+    setImageBusy(true);
+    setBanner(null);
+    try {
+      const dataUrl = await captureVideoFrame(videoPhotoRef.current);
+      aplicarImagen(dataUrl);
+      cerrarCamaraFoto();
+    } catch (err) {
+      setPhotoCameraError(err?.message || "No se pudo sacar la foto.");
+    } finally {
+      setImageBusy(false);
+    }
+  }, [aplicarImagen, cerrarCamaraFoto]);
+
+  useEffect(() => {
+    if (!photoCameraOpen) return undefined;
+    let cancelled = false;
+
+    const start = async () => {
+      try {
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          setPhotoCameraError("Este navegador no permite acceso a cámara.");
+          return;
+        }
+        const deviceId = await pickBackCameraDeviceId();
+        const constraints = deviceId
+          ? { video: { deviceId: { exact: deviceId } }, audio: false }
+          : { video: { facingMode: { ideal: "environment" } }, audio: false };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        photoStreamRef.current = stream;
+        const video = videoPhotoRef.current;
+        if (!video) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+        await optimizeActiveCameraTrack(video);
+        if (!cancelled) setPhotoCameraReady(true);
+      } catch (e) {
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("permission") || e?.name === "NotAllowedError") {
+          setPhotoCameraError("Necesitamos acceso a la cámara para sacar la foto.");
+        } else {
+          setPhotoCameraError(msg || "No se pudo abrir la cámara.");
+        }
+      }
+    };
+
+    start();
+    return () => {
+      cancelled = true;
+      const stream = photoStreamRef.current;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        photoStreamRef.current = null;
+      }
+      const v = videoPhotoRef.current;
+      if (v) {
+        v.pause();
+        v.srcObject = null;
+      }
+      setPhotoCameraReady(false);
+    };
+  }, [photoCameraOpen]);
 
   const archiveProduct = async (row) => {
     if (!window.confirm(`¿Archivar el producto "${row.nombre}"?`)) return;
@@ -627,12 +757,69 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
             <Input label="Stock mínimo" name="stock_minimo" type="number" value={formState.stock_minimo} onChange={onChange} />
             <Input label="Precio compra" name="precio_compra" type="number" step="0.01" value={formState.precio_compra} onChange={onChange} />
             <Input label="Precio venta" name="precio_venta" type="number" step="0.01" value={formState.precio_venta} onChange={onChange} />
+            <div className="md:col-span-2 xl:col-span-4">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Foto</span>
+              <div className="mt-1.5 flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
+                  {normalizeProductoImagenSrc(formState.imagen) ? (
+                    <img
+                      src={normalizeProductoImagenSrc(formState.imagen)}
+                      alt="Foto del producto"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="px-2 text-center text-xs font-medium text-zinc-400">Sin foto</span>
+                  )}
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <p className="text-sm text-zinc-500">
+                    Elegí un archivo o sacá una foto con la cámara. Se comprime y queda guardada en el producto (y en el backup).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onPickImagenArchivo}
+                    />
+                    <button
+                      type="button"
+                      disabled={imageBusy}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      Elegir del dispositivo
+                    </button>
+                    <button
+                      type="button"
+                      disabled={imageBusy}
+                      onClick={abrirCamaraFoto}
+                      className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      Sacar foto
+                    </button>
+                    {formState.imagen ? (
+                      <button
+                        type="button"
+                        disabled={imageBusy}
+                        onClick={quitarImagen}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                      >
+                        Quitar foto
+                      </button>
+                    ) : null}
+                  </div>
+                  {imageBusy ? <p className="text-xs font-medium text-zinc-500">Procesando imagen…</p> : null}
+                </div>
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700">
               Cancelar
             </button>
-            <button type="submit" disabled={!isValid(formState) || isPending} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="submit" disabled={!isValid(formState) || isPending || imageBusy} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               {formState.id_producto ? "Guardar cambios" : "Crear producto"}
             </button>
           </div>
@@ -649,13 +836,14 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
 
       <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-lg shadow-zinc-900/8">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-left text-base">
+          <table className="w-full min-w-[1140px] border-collapse text-left text-base">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-100/90">
                 {[
+                  { label: "Foto", className: "w-[6%] min-w-[4.5rem]" },
                   { label: "Código", className: "w-[8%]" },
                   { label: "Código barra", className: "w-[9%]" },
-                  { label: "Nombre", className: "w-[22%] min-w-[14rem]" },
+                  { label: "Nombre", className: "w-[20%] min-w-[14rem]" },
                   { label: "Marca", className: "w-[9%]" },
                   { label: "Sector", className: "w-[9%]" },
                   { label: "Stock", className: "w-[5%]" },
@@ -675,8 +863,27 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((row, idx) => (
+              {pageRows.map((row, idx) => {
+                const fotoSrc = normalizeProductoImagenSrc(row.imagen);
+                return (
                 <tr key={row.id_producto} className={`border-b border-zinc-200 ${idx % 2 === 0 ? "bg-white" : "bg-zinc-50/50"}`}>
+                  <td className="px-3 py-2">
+                    {fotoSrc ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImagen({ src: fotoSrc, nombre: row.nombre })}
+                        className="block h-12 w-12 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+                        title="Ver foto"
+                        aria-label={`Ver foto de ${row.nombre}`}
+                      >
+                        <img src={fotoSrc} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    ) : (
+                      <span className="inline-flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-semibold text-zinc-400">
+                        —
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-base text-zinc-700">
                     <span className="inline-flex items-center gap-2">
                       <span
@@ -735,7 +942,8 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -774,6 +982,24 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
             <p className="mt-1 text-sm text-zinc-500">
               {descProduct.codigo ? `Código: ${descProduct.codigo}` : "Sin código"}
             </p>
+            {normalizeProductoImagenSrc(descProduct.imagen) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewImagen({
+                    src: normalizeProductoImagenSrc(descProduct.imagen),
+                    nombre: descProduct.nombre,
+                  })
+                }
+                className="mt-4 block overflow-hidden rounded-xl border border-zinc-200"
+              >
+                <img
+                  src={normalizeProductoImagenSrc(descProduct.imagen)}
+                  alt={descProduct.nombre}
+                  className="max-h-56 w-full object-contain bg-zinc-50"
+                />
+              </button>
+            ) : null}
             <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-base text-zinc-700 whitespace-pre-wrap">
               {descProduct.descripcion || "Este producto no tiene descripción."}
             </div>
@@ -858,6 +1084,62 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewImagen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold text-zinc-900">{previewImagen.nombre || "Foto"}</h3>
+              <button
+                type="button"
+                onClick={() => setPreviewImagen(null)}
+                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Cerrar
+              </button>
+            </div>
+            <img src={previewImagen.src} alt={previewImagen.nombre || "Foto del producto"} className="max-h-[70vh] w-full rounded-xl object-contain bg-zinc-50" />
+          </div>
+        </div>
+      ) : null}
+
+      {photoCameraOpen ? (
+        <div className="fixed inset-0 z-[73] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="modal-foto-stock">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="modal-foto-stock" className="text-base font-semibold text-zinc-900">
+                  Sacar foto del producto
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500">Encuadrá la pieza y tocá Capturar.</p>
+              </div>
+              <button type="button" onClick={cerrarCamaraFoto} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50">
+                Cerrar
+              </button>
+            </div>
+            <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-black">
+              <video ref={videoPhotoRef} autoPlay playsInline muted className="h-[280px] w-full object-cover" />
+              {!photoCameraReady && !photoCameraError ? (
+                <div className="absolute inset-0 grid place-items-center bg-black/40 text-sm font-medium text-white">Iniciando cámara...</div>
+              ) : null}
+            </div>
+            {photoCameraError ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{photoCameraError}</div>
+            ) : (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  disabled={!photoCameraReady || imageBusy}
+                  onClick={capturarFotoCamara}
+                  className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {imageBusy ? "Guardando…" : "Capturar"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
