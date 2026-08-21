@@ -204,6 +204,22 @@ export default function VentaClient({ initialProductos = [], listError = null })
   }, []);
 
   useEffect(() => {
+    if (!cartReady || catalogo.length === 0) return;
+    setCart((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        const p = catalogo.find((x) => Number(x.id_producto) === Number(line.id_producto));
+        if (!p) return line;
+        const img = p.imagen ?? "";
+        if (line.imagen === img) return line;
+        changed = true;
+        return { ...line, imagen: img };
+      });
+      return changed ? next : prev;
+    });
+  }, [cartReady, catalogo]);
+
+  useEffect(() => {
     if (!cartReady) return;
     writeVentaCart(cart);
   }, [cart, cartReady]);
@@ -218,6 +234,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
   const [cantidadModal, setCantidadModal] = useState(null);
   const [cantidadInput, setCantidadInput] = useState("1");
   const [descProduct, setDescProduct] = useState(null);
+  const [previewImagen, setPreviewImagen] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanError, setScanError] = useState(null);
   const [scanReady, setScanReady] = useState(false);
@@ -273,6 +290,7 @@ export default function VentaClient({ initialProductos = [], listError = null })
             id_producto: id,
             nombre,
             codigo_barra: product?.codigo_barra ?? "",
+            imagen: product?.imagen ?? "",
             stock,
             cantidad: cant,
             precio_unitario: precio,
@@ -684,13 +702,21 @@ export default function VentaClient({ initialProductos = [], listError = null })
                   return (
                   <li
                     key={p.id_producto}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-50/80"
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50/80"
                   >
                     {fotoSrc ? (
-                      <img src={fotoSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg border border-zinc-200 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImagen({ src: fotoSrc, nombre: p.nombre })}
+                        className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+                        title="Ver foto"
+                        aria-label={`Ver foto de ${p.nombre}`}
+                      >
+                        <img src={fotoSrc} alt="" className="h-full w-full object-cover" />
+                      </button>
                     ) : (
-                      <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-semibold text-zinc-400">
-                        —
+                      <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-semibold text-zinc-400">
+                        Sin foto
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
@@ -736,22 +762,43 @@ export default function VentaClient({ initialProductos = [], listError = null })
               <p className="mt-4 flex-1 text-base text-zinc-500">Vacío. Escaná o agregá desde resultados.</p>
             ) : (
               <ul className="mt-4 max-h-[min(480px,58vh)] flex-1 space-y-4 overflow-y-auto pr-1">
-                {cart.map((line) => (
+                {cart.map((line) => {
+                  const fotoSrc = normalizeProductoImagenSrc(line.imagen);
+                  return (
                   <li
                     key={line.id_producto}
                     className="rounded-xl border border-zinc-200 bg-zinc-50/80 p-4 text-base shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 flex-1 text-lg font-semibold leading-snug text-zinc-900 sm:text-xl">
-                        {line.nombre}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removeLine(line.id_producto)}
-                        className="shrink-0 text-base font-semibold text-red-600 hover:text-red-700"
-                      >
-                        Quitar
-                      </button>
+                    <div className="flex items-start gap-3">
+                      {fotoSrc ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImagen({ src: fotoSrc, nombre: line.nombre })}
+                          className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white"
+                          title="Ver foto"
+                          aria-label={`Ver foto de ${line.nombre}`}
+                        >
+                          <img src={fotoSrc} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      ) : (
+                        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-white text-[10px] font-semibold text-zinc-400">
+                          Sin foto
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 flex-1 text-lg font-semibold leading-snug text-zinc-900 sm:text-xl">
+                            {line.nombre}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => removeLine(line.id_producto)}
+                            className="shrink-0 text-base font-semibold text-red-600 hover:text-red-700"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-end gap-4">
                       <div data-no-global-barcode className="min-w-[120px] flex-1">
@@ -776,7 +823,8 @@ export default function VentaClient({ initialProductos = [], listError = null })
                       Subtotal <span className="tabular-nums">{money(lineSubtotal(line))}</span>
                     </p>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
 
@@ -846,13 +894,28 @@ export default function VentaClient({ initialProductos = [], listError = null })
           data-no-global-barcode
         >
           <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
-            <h3 id="modal-cantidad-titulo" className="text-base font-semibold text-zinc-900">
-              Cantidad
-            </h3>
-            <p className="mt-1 truncate text-base text-zinc-600" title={cantidadModal.nombre}>
-              {cantidadModal.nombre}
-            </p>
-            <p className="mt-1 text-sm text-zinc-500">Stock disponible: {cantidadModal.stock}</p>
+            <div className="flex items-start gap-3">
+              {normalizeProductoImagenSrc(cantidadModal.imagen) ? (
+                <img
+                  src={normalizeProductoImagenSrc(cantidadModal.imagen)}
+                  alt=""
+                  className="h-16 w-16 shrink-0 rounded-lg border border-zinc-200 object-cover"
+                />
+              ) : (
+                <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-semibold text-zinc-400">
+                  Sin foto
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <h3 id="modal-cantidad-titulo" className="text-base font-semibold text-zinc-900">
+                  Cantidad
+                </h3>
+                <p className="mt-1 truncate text-base text-zinc-600" title={cantidadModal.nombre}>
+                  {cantidadModal.nombre}
+                </p>
+                <p className="mt-1 text-sm text-zinc-500">Stock disponible: {cantidadModal.stock}</p>
+              </div>
+            </div>
             <label className="mt-4 block text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Unidades a agregar
               <input
@@ -942,6 +1005,37 @@ export default function VentaClient({ initialProductos = [], listError = null })
                 Si no detecta, acercá o alejás el celular/cámara y mejorá la iluminación.
               </p>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {previewImagen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          data-no-global-barcode
+          onClick={() => setPreviewImagen(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold text-zinc-900">{previewImagen.nombre || "Foto"}</h3>
+              <button
+                type="button"
+                onClick={() => setPreviewImagen(null)}
+                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Cerrar
+              </button>
+            </div>
+            <img
+              src={previewImagen.src}
+              alt={previewImagen.nombre || "Foto del producto"}
+              className="max-h-[70vh] w-full rounded-xl bg-zinc-50 object-contain"
+            />
           </div>
         </div>
       ) : null}

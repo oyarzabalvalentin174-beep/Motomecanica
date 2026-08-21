@@ -1089,8 +1089,16 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
       ) : null}
 
       {previewImagen ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/70 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl">
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreviewImagen(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-3 flex items-start justify-between gap-3">
               <h3 className="text-base font-semibold text-zinc-900">{previewImagen.nombre || "Foto"}</h3>
               <button
@@ -1101,7 +1109,11 @@ export default function StockClient({ initialRows, marcas = [], sectores = [], l
                 Cerrar
               </button>
             </div>
-            <img src={previewImagen.src} alt={previewImagen.nombre || "Foto del producto"} className="max-h-[70vh] w-full rounded-xl object-contain bg-zinc-50" />
+            <img
+              src={previewImagen.src}
+              alt={previewImagen.nombre || "Foto del producto"}
+              className="max-h-[70vh] w-full rounded-xl object-contain bg-zinc-50"
+            />
           </div>
         </div>
       ) : null}

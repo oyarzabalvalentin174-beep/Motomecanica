@@ -36,7 +36,14 @@ export function readVentaCart() {
 export function writeVentaCart(lines) {
   if (!canUseStorage()) return;
   try {
-    const safe = Array.isArray(lines) ? lines : [];
+    const safe = (Array.isArray(lines) ? lines : []).map((line) => ({
+      id_producto: Number(line?.id_producto),
+      nombre: String(line?.nombre ?? "").trim(),
+      codigo_barra: line?.codigo_barra ?? "",
+      stock: Number(line?.stock ?? 0),
+      cantidad: Number(line?.cantidad ?? 0),
+      precio_unitario: Number(line?.precio_unitario ?? 0),
+    }));
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
   } catch {
     // quota / private mode
