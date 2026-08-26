@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ScrollToTopButton from "@/components/ScrollToTopButton";
 import {
   ResponsiveContainer,
@@ -26,17 +26,29 @@ const PERIODOS = [
   { id: "anio", label: "Último año" },
 ];
 
+const PERIODOS_MARCAS = [
+  { id: "dia", label: "Día" },
+  { id: "semana", label: "Semana" },
+  { id: "mes", label: "Mes" },
+  { id: "anio", label: "Año" },
+];
+
+const MARCAS_BAR_COLORS = ["#dc2626", "#b91c1c", "#0d9488", "#7c3aed", "#0369a1", "#ca8a04", "#db2777", "#64748b", "#ea580c", "#0891b2"];
+
 const PIE_COLORS = ["#dc2626", "#0d9488", "#7c3aed", "#0369a1", "#ca8a04", "#64748b", "#db2777"];
 
 const tooltipStyle = {
-  backgroundColor: "rgba(9, 9, 11, 0.92)",
-  border: "1px solid rgba(220, 38, 38, 0.25)",
+  backgroundColor: "#18181b",
+  border: "1px solid rgba(244, 244, 245, 0.2)",
   borderRadius: "12px",
   fontSize: "13px",
   padding: "10px 12px",
   color: "#fafafa",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
 };
+
+const tooltipLabelStyle = { color: "#fafafa", fontWeight: 600, marginBottom: 4 };
+const tooltipItemStyle = { color: "#e4e4e7" };
 
 function todayYmd() {
   const d = new Date();
@@ -105,6 +117,22 @@ function formatMonthLabel(ymd) {
   return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
 }
 
+function monthBoundsFromYmd(ymd) {
+  const [y, m] = ymdToMonth(ymd).split("-").map(Number);
+  if (!y || !m) return monthBoundsFromYmd(todayYmd());
+  const desde = ymdFromParts(y, m, 1);
+  const last = new Date(y, m, 0).getDate();
+  const hasta = capYmdAtToday(ymdFromParts(y, m, last));
+  return { desde, hasta };
+}
+
+function yearBoundsFromYmd(ymd) {
+  const y = Number(String(ymd ?? "").slice(0, 4)) || new Date().getFullYear();
+  const desde = `${y}-01-01`;
+  const hasta = capYmdAtToday(`${y}-12-31`);
+  return { desde, hasta };
+}
+
 function metodoLabel(m) {
   const s = String(m ?? "").trim();
   if (!s || s === "sin_definir") return "Sin definir";
@@ -137,26 +165,33 @@ function shortName(n, max = 18) {
 }
 
 function periodoSubtitle(periodo, fecha, semanaDesde, semanaHasta) {
-  if (periodo === "dia") return fecha ? `Suma facturada por hora · ${fecha}` : "Suma facturada por hora del día";
+  if (periodo === "dia") return fecha ? `Ganancia por hora · ${fecha}` : "Ganancia por hora del día";
   if (periodo === "semana") {
     if (semanaDesde && semanaHasta) {
-      return `Suma facturada por día · ${formatDayShort(semanaDesde)} → ${formatDayShort(semanaHasta)}`;
+      return `Ganancia por día · ${formatDayShort(semanaDesde)} → ${formatDayShort(semanaHasta)}`;
     }
-    return "Suma facturada por día · lunes a viernes";
-  }
-  if (periodo === "ultimomes") {
-    return fecha
-      ? `Suma facturada semana a semana · ${formatMonthLabel(fecha)}`
-      : "Suma facturada semana a semana del mes";
+    return "Ganancia por día · lunes a viernes";
   }
   if (periodo === "mes") {
-    return fecha
-      ? `Suma facturada por mes · 12 meses hasta ${formatMonthLabel(fecha)}`
-      : "Suma facturada por mes (últimos 12 meses)";
+    return fecha ? `Ganancia del mes · ${formatMonthLabel(fecha)}` : "Ganancia del mes";
   }
-  return fecha
-    ? `Suma facturada por mes · 12 meses hasta ${formatMonthLabel(fecha)}`
-    : "Suma facturada por mes (últimos 12 meses)";
+  const y = String(fecha ?? "").slice(0, 4);
+  return y ? `Ganancia del año · ${y}` : "Ganancia del año";
+}
+
+function marcasPeriodoSubtitle(periodo, fecha, semanaDesde, semanaHasta) {
+  if (periodo === "dia") return fecha ? `Productos vendidos por marca · ${fecha}` : "Productos vendidos por marca del día";
+  if (periodo === "semana") {
+    if (semanaDesde && semanaHasta) {
+      return `Productos vendidos por marca · ${formatDayShort(semanaDesde)} → ${formatDayShort(semanaHasta)}`;
+    }
+    return "Productos vendidos por marca · semana (lun–vie)";
+  }
+  if (periodo === "mes") {
+    return fecha ? `Productos vendidos por marca · ${formatMonthLabel(fecha)}` : "Productos vendidos por marca del mes";
+  }
+  const y = String(fecha ?? "").slice(0, 4);
+  return y ? `Productos vendidos por marca · año ${y}` : "Productos vendidos por marca del año";
 }
 
 function ChartCard({ title, subtitle, children, className = "", tall = false, accent = "red" }) {
@@ -171,20 +206,18 @@ function ChartCard({ title, subtitle, children, className = "", tall = false, ac
 
   return (
     <section
-      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/95 shadow-[0_4px_24px_-6px_rgba(24,24,27,0.12)] backdrop-blur-sm ${className}`}
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border-2 border-zinc-500 bg-white shadow-[0_4px_24px_-6px_rgba(24,24,27,0.12)] ${className}`}
     >
       <div
         className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-red-500/[0.06] to-transparent opacity-0 transition-opacity group-hover:opacity-100"
         aria-hidden
       />
-      <header className="relative border-b border-zinc-100/90 bg-gradient-to-r from-zinc-50 via-white to-zinc-50/80 px-4 py-4 sm:px-6 sm:py-5">
-        <div className={`mb-2 h-0.5 w-16 rounded-full bg-gradient-to-r ${accentBar}`} aria-hidden />
+      <header className="relative border-b border-zinc-300 bg-gradient-to-r from-zinc-50 via-white to-zinc-50/80 px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className={`mb-1.5 h-0.5 w-16 rounded-full bg-gradient-to-r ${accentBar}`} aria-hidden />
         <h2 className="text-lg font-semibold tracking-tight text-zinc-900 sm:text-xl">{title}</h2>
-        {subtitle ? <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-500 sm:text-sm">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-zinc-500 sm:text-sm">{subtitle}</p> : null}
       </header>
-      <div className={`relative flex-1 p-3 sm:p-5 ${tall ? "min-h-[300px] sm:min-h-[360px]" : "min-h-[220px] sm:min-h-[260px]"}`}>
-        {children}
-      </div>
+      <div className={`relative flex-1 p-3 sm:p-4 ${tall ? "min-h-[260px]" : ""}`}>{children}</div>
     </section>
   );
 }
@@ -244,18 +277,28 @@ function PeriodFilters({
   onSemanaChange,
   loading,
   compact = false,
+  periodos = PERIODOS,
+  calendarMode = false,
 }) {
   const pickerLabel =
     periodo === "dia"
       ? "Día"
       : periodo === "ultimomes"
         ? "Mes"
-        : periodo === "mes" || periodo === "anio"
-          ? "Mes de referencia"
-          : null;
+        : periodo === "mes"
+          ? calendarMode
+            ? "Mes"
+            : "Mes de referencia"
+          : periodo === "anio"
+            ? calendarMode
+              ? "Año"
+              : "Mes de referencia"
+            : null;
 
-  const usesMonthPicker = periodo === "ultimomes" || periodo === "mes" || periodo === "anio";
+  const usesMonthPicker =
+    periodo === "ultimomes" || periodo === "mes" || (!calendarMode && periodo === "anio");
   const usesDatePicker = periodo === "dia";
+  const usesYearPicker = calendarMode && periodo === "anio";
 
   const applySemana = (anchorYmd) => {
     const { desde, hasta } = syncSemanaRange(anchorYmd);
@@ -269,7 +312,7 @@ function PeriodFilters({
       className={`flex flex-col gap-3 ${compact ? "" : "rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 sm:flex-row sm:flex-wrap sm:items-end"}`}
     >
       <div className="flex flex-wrap gap-1.5 sm:gap-2">
-        {PERIODOS.map((p) => (
+        {periodos.map((p) => (
           <button
             key={p.id}
             type="button"
@@ -355,6 +398,27 @@ function PeriodFilters({
           />
         </label>
       ) : null}
+      {usesYearPicker ? (
+        <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:min-w-[120px]">
+          {pickerLabel}
+          <input
+            type="number"
+            min={2020}
+            max={Number(todayYmd().slice(0, 4))}
+            value={String(fecha ?? "").slice(0, 4) || todayYmd().slice(0, 4)}
+            onChange={(e) => {
+              const y = Number(e.target.value);
+              if (!Number.isFinite(y) || y < 2020) return;
+              const maxY = Number(todayYmd().slice(0, 4));
+              const year = Math.min(maxY, y);
+              const v = capYmdAtToday(`${year}-12-31`);
+              setFecha(v);
+              onFechaChange?.(v);
+            }}
+            className="mt-1 w-full min-h-[40px] rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
+          />
+        </label>
+      ) : null}
       <button
         type="button"
         onClick={onApply}
@@ -377,6 +441,8 @@ function VerticalBarBlock({ data, dataKey, fill, labelKey = "name", height = 260
         <YAxis type="category" dataKey={labelKey} width={108} tick={{ fill: "#52525b", fontSize: 11 }} tickLine={false} />
         <Tooltip
           contentStyle={tooltipStyle}
+          labelStyle={tooltipLabelStyle}
+          itemStyle={tooltipItemStyle}
           formatter={(v) => [intFmt(v), valueLabel]}
           labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
         />
@@ -396,6 +462,8 @@ function HorizontalBarBlock({ data, dataKey, fill, height = 320 }) {
         <YAxis tick={{ fill: "#52525b", fontSize: 12 }} allowDecimals={false} />
         <Tooltip
           contentStyle={tooltipStyle}
+          labelStyle={tooltipLabelStyle}
+          itemStyle={tooltipItemStyle}
           formatter={(v) => [intFmt(v), "Unidades"]}
           labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
         />
@@ -424,10 +492,12 @@ export default function ReportesGraficosClient({
   const [fecha, setFecha] = useState(todayYmd());
   const [semanaDesde, setSemanaDesde] = useState(() => currentWeekMonFri().desde);
   const [semanaHasta, setSemanaHasta] = useState(() => currentWeekMonFri().hasta);
+  const [marcasVentasTop, setMarcasVentasTop] = useState([]);
+  const [errMarcas, setErrMarcas] = useState(null);
 
   const buildPeriodQs = useCallback((periodoVal, fechaVal, desdeVal, hastaVal) => {
     const p = new URLSearchParams({ periodo: periodoVal });
-    if (periodoVal === "semana" && desdeVal && hastaVal) {
+    if (desdeVal && hastaVal) {
       p.set("desde", desdeVal);
       p.set("hasta", hastaVal);
     } else if (fechaVal) {
@@ -436,8 +506,29 @@ export default function ReportesGraficosClient({
     return `?${p.toString()}`;
   }, []);
 
-  /** Solo actualiza la serie de Ventas facturadas; no toca métodos de pago ni el resto. */
-  const refreshVentasSerie = useCallback(
+  /** Misma ventana para ganancia y top marcas: día / semana / mes calendario / año calendario. */
+  const buildSharedQs = useCallback(
+    (periodoVal, fechaVal, semDesde, semHasta) => {
+      if (periodoVal === "semana") {
+        return buildPeriodQs("semana", null, semDesde, semHasta);
+      }
+      if (periodoVal === "mes") {
+        const { desde, hasta } = monthBoundsFromYmd(fechaVal);
+        // ultimomes → buckets por semana dentro del mes
+        return buildPeriodQs("ultimomes", null, desde, hasta);
+      }
+      if (periodoVal === "anio") {
+        const { desde, hasta } = yearBoundsFromYmd(fechaVal);
+        // mes → buckets por mes dentro del año
+        return buildPeriodQs("mes", null, desde, hasta);
+      }
+      return buildPeriodQs("dia", fechaVal);
+    },
+    [buildPeriodQs],
+  );
+
+  /** Actualiza ganancia + top marcas con el mismo rango de fechas. */
+  const refreshGraficosPeriodo = useCallback(
     async (periodoOverride, fechaOverride, semanaOverride) => {
       const periodoVal = periodoOverride ?? periodo;
       const fechaVal = fechaOverride ?? fecha;
@@ -445,17 +536,17 @@ export default function ReportesGraficosClient({
       const semHasta = semanaOverride?.hasta ?? semanaHasta;
       setLoading34(true);
       setErr34(null);
+      setErrMarcas(null);
       try {
-        const qs =
-          periodoVal === "semana"
-            ? buildPeriodQs(periodoVal, null, semDesde, semHasta)
-            : buildPeriodQs(periodoVal, fechaVal);
+        const qs = buildSharedQs(periodoVal, fechaVal, semDesde, semHasta);
         const r = await fetch(`/api/reportes/graficos-34${qs}`, {
           credentials: "include",
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          setErr34(j?.error || "No se pudieron cargar las ventas facturadas.");
+          const msg = j?.error || "No se pudieron cargar los gráficos del período.";
+          setErr34(msg);
+          setErrMarcas(msg);
           return;
         }
         setData34((prev) => ({
@@ -465,14 +556,22 @@ export default function ReportesGraficosClient({
           fecha_desde: j?.fecha_desde,
           fecha_hasta: j?.fecha_hasta,
         }));
+        setMarcasVentasTop(Array.isArray(j?.marcas_ventas_top) ? j.marcas_ventas_top : []);
       } catch (e) {
-        setErr34(e?.message || "Error de red");
+        const msg = e?.message || "Error de red";
+        setErr34(msg);
+        setErrMarcas(msg);
       } finally {
         setLoading34(false);
       }
     },
-    [periodo, fecha, semanaDesde, semanaHasta, buildPeriodQs],
+    [periodo, fecha, semanaDesde, semanaHasta, buildSharedQs],
   );
+
+  useEffect(() => {
+    void refreshGraficosPeriodo("mes", todayYmd());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stockMas = Array.isArray(data12?.stock_mas) ? data12.stock_mas : [];
   const stockMenos = Array.isArray(data12?.stock_menos) ? data12.stock_menos : [];
@@ -512,6 +611,14 @@ export default function ReportesGraficosClient({
   const barMarcasProdMenos = marcasProdMenos.map((r) => mapMarca(r, "cantidad_productos"));
   const barMarcasUniMas = marcasUniMas.map((r) => mapMarca(r, "unidades"));
   const barMarcasUniMenos = marcasUniMenos.map((r) => mapMarca(r, "unidades"));
+
+  const barMarcasVentasTop = marcasVentasTop.map((r, i) => ({
+    name: shortName(r.nombre_marca ?? r.marca ?? "—", 14),
+    full: r.nombre_marca ?? r.marca ?? "—",
+    productos: Number(r.cantidad_productos ?? 0),
+    idx: i + 1,
+  }));
+  const totalProductosMarcas = barMarcasVentasTop.reduce((acc, r) => acc + r.productos, 0);
 
   const metodos = Array.isArray(data34?.metodos_pago) ? data34.metodos_pago : [];
   const pieData = metodos.map((r) => ({
@@ -693,6 +800,8 @@ export default function ReportesGraficosClient({
                     </Pie>
                     <Tooltip
                       contentStyle={tooltipStyle}
+                      labelStyle={tooltipLabelStyle}
+                      itemStyle={tooltipItemStyle}
                       formatter={(value, _n, props) => [`${value} ventas · $${money(props.payload?.total)}`, props.payload?.name]}
                     />
                   </PieChart>
@@ -722,17 +831,22 @@ export default function ReportesGraficosClient({
       {/* 4 — Ventas facturadas (pesos) */}
       <div className="mb-8">
         <ChartCard
-          title="Ventas facturadas"
+          title="Ganancia de ventas"
           subtitle={periodoSubtitle(periodo, fecha, semanaDesde, semanaHasta)}
           className="overflow-visible"
         >
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-zinc-600">
-              Total en el período:{" "}
+              Ganancia en el período:{" "}
               <span className="text-lg font-semibold tabular-nums text-zinc-900">${money(totalFacturado)}</span>
+              <span className="mt-0.5 block text-xs text-zinc-500">
+                Precio cobrado (con dto. efectivo/transf.) − precio de compra.
+              </span>
             </p>
             <PeriodFilters
               compact
+              calendarMode
+              periodos={PERIODOS_MARCAS}
               periodo={periodo}
               setPeriodo={setPeriodo}
               fecha={fecha}
@@ -746,14 +860,14 @@ export default function ReportesGraficosClient({
                   const w = currentWeekMonFri();
                   setSemanaDesde(w.desde);
                   setSemanaHasta(w.hasta);
-                  void refreshVentasSerie(id, fecha, w);
+                  void refreshGraficosPeriodo(id, fecha, w);
                 } else {
-                  void refreshVentasSerie(id, fecha);
+                  void refreshGraficosPeriodo(id, fecha);
                 }
               }}
-              onFechaChange={(f) => void refreshVentasSerie(periodo, f)}
-              onSemanaChange={(desde, hasta) => void refreshVentasSerie("semana", null, { desde, hasta })}
-              onApply={() => void refreshVentasSerie()}
+              onFechaChange={(f) => void refreshGraficosPeriodo(periodo, f)}
+              onSemanaChange={(desde, hasta) => void refreshGraficosPeriodo("semana", null, { desde, hasta })}
+              onApply={() => void refreshGraficosPeriodo()}
               loading={loading34}
             />
           </div>
@@ -782,7 +896,9 @@ export default function ReportesGraficosClient({
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(v) => [`$${money(v)}`, "Facturado"]}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  formatter={(v) => [`$${money(v)}`, "Ganancia"]}
                   labelFormatter={(l) => String(l)}
                 />
                 <Area
@@ -803,6 +919,95 @@ export default function ReportesGraficosClient({
                 />
               </AreaChart>
             </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* 4b — Top 10 marcas por cantidad de productos vendidos */}
+      <div className="mb-8">
+        <ChartCard
+          title="Top 10 marcas por productos vendidos"
+          subtitle={marcasPeriodoSubtitle(periodo, fecha, semanaDesde, semanaHasta)}
+          className="overflow-visible"
+          accent="violet"
+        >
+          <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-base text-zinc-700 sm:text-lg">
+                Productos distintos vendidos (top 10):{" "}
+                <span className="text-xl font-bold tabular-nums text-zinc-900 sm:text-2xl">
+                  {intFmt(totalProductosMarcas)}
+                </span>
+              </p>
+              {errMarcas ? <p className="mt-1 text-sm font-medium text-red-700">{errMarcas}</p> : null}
+            </div>
+            <PeriodFilters
+              compact
+              calendarMode
+              periodos={PERIODOS_MARCAS}
+              periodo={periodo}
+              setPeriodo={setPeriodo}
+              fecha={fecha}
+              setFecha={setFecha}
+              semanaDesde={semanaDesde}
+              semanaHasta={semanaHasta}
+              setSemanaDesde={setSemanaDesde}
+              setSemanaHasta={setSemanaHasta}
+              onSelectPeriodo={(id) => {
+                if (id === "semana") {
+                  const w = currentWeekMonFri();
+                  setSemanaDesde(w.desde);
+                  setSemanaHasta(w.hasta);
+                  void refreshGraficosPeriodo(id, fecha, w);
+                } else {
+                  void refreshGraficosPeriodo(id, fecha);
+                }
+              }}
+              onFechaChange={(f) => void refreshGraficosPeriodo(periodo, f)}
+              onSemanaChange={(desde, hasta) => void refreshGraficosPeriodo("semana", null, { desde, hasta })}
+              onApply={() => void refreshGraficosPeriodo()}
+              loading={loading34}
+            />
+          </div>
+          {barMarcasVentasTop.length === 0 ? (
+            <EmptyChart message="No hay productos vendidos por marca en este período." />
+          ) : (
+            <div className="h-[min(220px,36vh)] w-full min-h-[180px] rounded-xl border border-zinc-400/80 bg-white p-1.5">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={barMarcasVentasTop}
+                  margin={{ top: 4, right: 6, left: 0, bottom: 40 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "#52525b", fontSize: 11 }}
+                    interval={0}
+                    angle={-32}
+                    textAnchor="end"
+                    height={48}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: "#52525b", fontSize: 11 }}
+                    allowDecimals={false}
+                    width={36}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelStyle={tooltipLabelStyle}
+                    itemStyle={tooltipItemStyle}
+                    formatter={(v) => [intFmt(v), "Productos"]}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
+                  />
+                  <Bar dataKey="productos" radius={[6, 6, 0, 0]} maxBarSize={40}>
+                    {barMarcasVentasTop.map((_, i) => (
+                      <Cell key={`marca-top-${i}`} fill={MARCAS_BAR_COLORS[i % MARCAS_BAR_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </ChartCard>
       </div>
@@ -838,6 +1043,8 @@ export default function ReportesGraficosClient({
                 <YAxis type="category" dataKey="name" width={110} tick={{ fill: "#52525b", fontSize: 11 }} tickLine={false} />
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
                   formatter={(v) => [intFmt(v), "Productos"]}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
                 />
@@ -857,6 +1064,8 @@ export default function ReportesGraficosClient({
                 <YAxis type="category" dataKey="name" width={110} tick={{ fill: "#52525b", fontSize: 11 }} tickLine={false} />
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
                   formatter={(v) => [intFmt(v), "Productos"]}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
                 />
@@ -880,6 +1089,8 @@ export default function ReportesGraficosClient({
                 <YAxis type="category" dataKey="name" width={110} tick={{ fill: "#52525b", fontSize: 11 }} tickLine={false} />
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
                   formatter={(v) => [intFmt(v), "Unidades"]}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
                 />
@@ -899,6 +1110,8 @@ export default function ReportesGraficosClient({
                 <YAxis type="category" dataKey="name" width={110} tick={{ fill: "#52525b", fontSize: 11 }} tickLine={false} />
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
                   formatter={(v) => [intFmt(v), "Unidades"]}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
                 />

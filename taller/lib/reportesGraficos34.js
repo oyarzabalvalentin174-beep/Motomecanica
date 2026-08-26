@@ -95,22 +95,35 @@ function labelWeek(weekStartYmd) {
 }
 
 /**
- * Serie de ventas sumadas por bucket:
- * - dia → por hora
- * - semana → por día
- * - ultimomes → por semana
- * - mes / anio → por mes
+ * Serie de ganancia por bucket:
+ * precio cobrado = precio_unitario * (total / (total + descuento))  → aplica dto. efectivo/transf.
+ * ganancia = SUM(cantidad * (precio_cobrado - precio_compra))
  */
 export async function fetchVentasSerieAgregada(par) {
   const { periodo, desde, hasta } = resolveGraficos12Range(par);
+
+  const gananciaExpr = `COALESCE(SUM(
+    dv.cantidad * (
+      dv.precio_unitario * CASE
+        WHEN COALESCE(v.total, 0) + COALESCE(v.descuento, 0) > 0
+          THEN COALESCE(v.total, 0) / (COALESCE(v.total, 0) + COALESCE(v.descuento, 0))
+        WHEN LOWER(TRIM(COALESCE(v.metodo_pago, ''))) = 'efectivo' THEN 0.9
+        WHEN LOWER(TRIM(COALESCE(v.metodo_pago, ''))) = 'transferencia' THEN 0.95
+        ELSE 1
+      END
+      - COALESCE(p.precio_compra, 0)
+    )
+  ), 0)::numeric(14,2)`;
 
   if (periodo === "dia") {
     const rows = await query(
       `SELECT
          EXTRACT(HOUR FROM (v.fecha AT TIME ZONE $2))::int AS hora,
-         COALESCE(SUM(COALESCE(v.total, 0)), 0)::numeric(14,2) AS total,
-         COUNT(*)::int AS cantidad_ventas
-       FROM app.venta v
+         ${gananciaExpr} AS total,
+         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
+       FROM app.detalle_venta dv
+       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
+       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
        WHERE (v.fecha AT TIME ZONE $2)::date = $1::date
        GROUP BY 1
        ORDER BY 1`,
@@ -135,9 +148,11 @@ export async function fetchVentasSerieAgregada(par) {
     const rows = await query(
       `SELECT
          to_char((v.fecha AT TIME ZONE $3)::date, 'YYYY-MM-DD') AS dia,
-         COALESCE(SUM(COALESCE(v.total, 0)), 0)::numeric(14,2) AS total,
-         COUNT(*)::int AS cantidad_ventas
-       FROM app.venta v
+         ${gananciaExpr} AS total,
+         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
+       FROM app.detalle_venta dv
+       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
+       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
        WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
        GROUP BY 1
        ORDER BY 1`,
@@ -164,9 +179,11 @@ export async function fetchVentasSerieAgregada(par) {
     const rows = await query(
       `SELECT
          to_char(date_trunc('week', (v.fecha AT TIME ZONE $3)::timestamp)::date, 'YYYY-MM-DD') AS semana,
-         COALESCE(SUM(COALESCE(v.total, 0)), 0)::numeric(14,2) AS total,
-         COUNT(*)::int AS cantidad_ventas
-       FROM app.venta v
+         ${gananciaExpr} AS total,
+         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
+       FROM app.detalle_venta dv
+       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
+       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
        WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
        GROUP BY 1
        ORDER BY 1`,
@@ -193,9 +210,11 @@ export async function fetchVentasSerieAgregada(par) {
   const rows = await query(
     `SELECT
        to_char(date_trunc('month', (v.fecha AT TIME ZONE $3)::date)::date, 'YYYY-MM-DD') AS mes,
-       COALESCE(SUM(COALESCE(v.total, 0)), 0)::numeric(14,2) AS total,
-       COUNT(*)::int AS cantidad_ventas
-     FROM app.venta v
+       ${gananciaExpr} AS total,
+       COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
+     FROM app.detalle_venta dv
+     INNER JOIN app.venta v ON v.id_venta = dv.id_venta
+     INNER JOIN app.producto p ON p.id_producto = dv.id_producto
      WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
      GROUP BY 1
      ORDER BY 1`,
@@ -233,6 +252,29 @@ export async function fetchMetodosPagoPeriodo(par) {
   );
 }
 
+/**
+ * Top marcas por cantidad de productos distintos vendidos (no unidades ni $).
+ */
+export async function fetchTopMarcasVentasProductos(par, limit = 10) {
+  const { desde, hasta } = resolveGraficos12Range(par);
+  const lim = Math.min(50, Math.max(1, Number(limit) || 10));
+  return query(
+    `SELECT
+       COALESCE(NULLIF(TRIM(m.nombre), ''), 'Sin marca') AS nombre_marca,
+       COUNT(DISTINCT p.id_producto)::int AS cantidad_productos
+     FROM app.detalle_venta dv
+     INNER JOIN app.venta v ON v.id_venta = dv.id_venta
+     INNER JOIN app.producto p ON p.id_producto = dv.id_producto
+     LEFT JOIN app.marca m ON m.id_marca = p.marca_id
+     WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+     GROUP BY m.id_marca, m.nombre
+     HAVING COUNT(DISTINCT p.id_producto) > 0
+     ORDER BY cantidad_productos DESC, nombre_marca ASC
+     LIMIT $4`,
+    [desde, hasta, TZ, lim],
+  );
+}
+
 /** Carga métodos de pago + serie de ventas agregada (misma ventana de fechas). */
 export async function loadGraficos34(par) {
   const range = resolveGraficos12Range(par);
@@ -252,7 +294,10 @@ export async function loadGraficos34(par) {
     }
   }
 
-  const ventas_serie = await fetchVentasSerieAgregada(par);
+  const [ventas_serie, marcas_ventas_top] = await Promise.all([
+    fetchVentasSerieAgregada(par),
+    fetchTopMarcasVentasProductos(par, 10).catch(() => []),
+  ]);
 
   return {
     status: "ok",
@@ -261,5 +306,6 @@ export async function loadGraficos34(par) {
     fecha_hasta: range.hasta,
     metodos_pago,
     ventas_serie,
+    marcas_ventas_top: Array.isArray(marcas_ventas_top) ? marcas_ventas_top : [],
   };
 }
