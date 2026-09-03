@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 
 /** App Router: ejecución en Node (pg / bcrypt). */
 export const runtime = "nodejs";
@@ -42,19 +42,7 @@ async function checkIPBlocked(ip) {
     const result = await exec("sp_security_check_ip", { ip });
     return Boolean(result?.blocked || result?.is_blocked);
   } catch {
-    try {
-      const rows = await query(
-        `select count(*)::int as total
-         from app.security_log
-         where ip = $1
-           and success = false
-           and created_at > now() - interval '15 minutes'`,
-        [ip],
-      );
-      return (rows?.[0]?.total || 0) >= 5;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
@@ -67,28 +55,7 @@ async function getUserByUsername(username) {
       nombreusuario: normalizedUsername,
       includehash: true,
     });
-    const userFromSp = result?.data?.[0] || null;
-    if (userFromSp) return userFromSp;
-  } catch {
-    // SP falló; se intenta consulta directa.
-  }
-
-  try {
-    const rows = await query(
-      `select
-         id_usuario,
-         nombreusuario,
-         nombre,
-         apellido,
-         "contraseña" as contrasena,
-         ultimologin,
-         null::text as rol
-       from app.usuario
-       where lower(trim(nombreusuario)) = lower(trim($1))
-       limit 1`,
-      [normalizedUsername],
-    );
-    return rows?.[0] || null;
+    return result?.data?.[0] || null;
   } catch {
     return null;
   }
@@ -96,15 +63,8 @@ async function getUserByUsername(username) {
 
 async function checkUserBlocked(username) {
   try {
-    const rows = await query(
-      `select bloqueado_hasta
-       from app.usuario
-       where lower(nombreusuario) = lower($1)
-       limit 1`,
-      [username],
-    );
-    const blockedUntil = rows?.[0]?.bloqueado_hasta;
-    return blockedUntil ? new Date(blockedUntil) > new Date() : false;
+    const result = await exec("spgetusuariobloqueado", { nombreusuario: username });
+    return Boolean(result?.bloqueado);
   } catch {
     return false;
   }

@@ -1,4 +1,4 @@
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 
 const TZ = "America/Argentina/Buenos_Aires";
 
@@ -71,113 +71,30 @@ export function resolveGraficos12Range({
 
 /** Marcas: usa p.marca_id (no id_marca). */
 export async function fetchMarcasGraficos12() {
-  const [prodMas, prodMenos, uniMas, uniMenos] = await Promise.all([
-    query(
-      `SELECT m.nombre AS nombre_marca, COUNT(p.id_producto)::int AS cantidad_productos
-       FROM app.marca m
-       LEFT JOIN app.producto p
-         ON p.marca_id = m.id_marca AND COALESCE(p.archivado, FALSE) = FALSE
-       GROUP BY m.id_marca, m.nombre
-       HAVING COUNT(p.id_producto) > 0
-       ORDER BY COUNT(p.id_producto) DESC, m.nombre ASC
-       LIMIT 8`,
-    ),
-    query(
-      `SELECT m.nombre AS nombre_marca, COUNT(p.id_producto)::int AS cantidad_productos
-       FROM app.marca m
-       LEFT JOIN app.producto p
-         ON p.marca_id = m.id_marca AND COALESCE(p.archivado, FALSE) = FALSE
-       GROUP BY m.id_marca, m.nombre
-       HAVING COUNT(p.id_producto) > 0
-       ORDER BY COUNT(p.id_producto) ASC, m.nombre ASC
-       LIMIT 8`,
-    ),
-    query(
-      `SELECT m.nombre AS nombre_marca, COALESCE(SUM(GREATEST(p.stock, 0)), 0)::bigint AS unidades
-       FROM app.marca m
-       LEFT JOIN app.producto p
-         ON p.marca_id = m.id_marca AND COALESCE(p.archivado, FALSE) = FALSE
-       GROUP BY m.id_marca, m.nombre
-       HAVING COALESCE(SUM(GREATEST(p.stock, 0)), 0) > 0
-       ORDER BY COALESCE(SUM(GREATEST(p.stock, 0)), 0) DESC, m.nombre ASC
-       LIMIT 8`,
-    ),
-    query(
-      `SELECT m.nombre AS nombre_marca, COALESCE(SUM(GREATEST(p.stock, 0)), 0)::bigint AS unidades
-       FROM app.marca m
-       LEFT JOIN app.producto p
-         ON p.marca_id = m.id_marca AND COALESCE(p.archivado, FALSE) = FALSE
-       GROUP BY m.id_marca, m.nombre
-       HAVING COALESCE(SUM(GREATEST(p.stock, 0)), 0) > 0
-       ORDER BY COALESCE(SUM(GREATEST(p.stock, 0)), 0) ASC, m.nombre ASC
-       LIMIT 8`,
-    ),
-  ]);
-
+  const raw = await exec("spgetreportegraficos12marcas", {});
+  if (raw?.status === "error") throw new Error(raw.message || "Error en marcas");
   return {
-    marcas_productos_mas: prodMas ?? [],
-    marcas_productos_menos: prodMenos ?? [],
-    marcas_unidades_mas: uniMas ?? [],
-    marcas_unidades_menos: uniMenos ?? [],
+    marcas_productos_mas: Array.isArray(raw?.marcas_productos_mas) ? raw.marcas_productos_mas : [],
+    marcas_productos_menos: Array.isArray(raw?.marcas_productos_menos) ? raw.marcas_productos_menos : [],
+    marcas_unidades_mas: Array.isArray(raw?.marcas_unidades_mas) ? raw.marcas_unidades_mas : [],
+    marcas_unidades_menos: Array.isArray(raw?.marcas_unidades_menos) ? raw.marcas_unidades_menos : [],
   };
 }
 
-/** Stock y ventas por producto (fallback si el SP falla). */
+/** Stock y ventas por producto (SP; el SP viejo spgetreportegraficos12 puede seguir existiendo). */
 export async function fetchGraficos12Core(par) {
   const { periodo, desde, hasta } = resolveGraficos12Range(par);
-
-  const [stockMas, stockMenos, ventasMas, ventasMenos] = await Promise.all([
-    query(
-      `SELECT p.nombre, p.codigo, p.stock::int AS stock
-       FROM app.producto p
-       WHERE COALESCE(p.archivado, FALSE) = FALSE
-       ORDER BY p.stock DESC NULLS LAST, p.nombre ASC
-       LIMIT 5`,
-    ),
-    query(
-      `SELECT p.nombre, p.codigo, p.stock::int AS stock
-       FROM app.producto p
-       WHERE COALESCE(p.archivado, FALSE) = FALSE
-       ORDER BY p.stock ASC NULLS LAST, p.nombre ASC
-       LIMIT 5`,
-    ),
-    query(
-      `SELECT p.nombre, p.codigo, SUM(dv.cantidad)::bigint AS unidades
-       FROM app.detalle_venta dv
-       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-       WHERE COALESCE(p.archivado, FALSE) = FALSE
-         AND (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-       GROUP BY p.id_producto, p.nombre, p.codigo
-       HAVING SUM(dv.cantidad) > 0
-       ORDER BY SUM(dv.cantidad) DESC
-       LIMIT 10`,
-      [desde, hasta, TZ],
-    ),
-    query(
-      `SELECT p.nombre, p.codigo, SUM(dv.cantidad)::bigint AS unidades
-       FROM app.detalle_venta dv
-       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-       WHERE COALESCE(p.archivado, FALSE) = FALSE
-         AND (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-       GROUP BY p.id_producto, p.nombre, p.codigo
-       HAVING SUM(dv.cantidad) > 0
-       ORDER BY SUM(dv.cantidad) ASC, p.nombre ASC
-       LIMIT 10`,
-      [desde, hasta, TZ],
-    ),
-  ]);
-
+  const raw = await exec("spgetreportegraficos12core", { periodo, desde, hasta });
+  if (raw?.status === "error") throw new Error(raw.message || "Error en reporte");
   return {
     status: "ok",
     periodo,
     fecha_desde: desde,
     fecha_hasta: hasta,
-    stock_mas: stockMas ?? [],
-    stock_menos: stockMenos ?? [],
-    ventas_mas: ventasMas ?? [],
-    ventas_menos: ventasMenos ?? [],
+    stock_mas: Array.isArray(raw?.stock_mas) ? raw.stock_mas : [],
+    stock_menos: Array.isArray(raw?.stock_menos) ? raw.stock_menos : [],
+    ventas_mas: Array.isArray(raw?.ventas_mas) ? raw.ventas_mas : [],
+    ventas_menos: Array.isArray(raw?.ventas_menos) ? raw.ventas_menos : [],
   };
 }
 
@@ -191,12 +108,9 @@ export async function loadGraficos12(par) {
   let raw;
   try {
     raw = await exec("spgetreportegraficos12", par);
-  } catch (e) {
-    if (!isMarcaColumnError(e?.message)) throw e;
+    if (raw?.status === "error") throw new Error(raw.message || "Error en reporte");
+  } catch {
     raw = await fetchGraficos12Core(par);
-  }
-  if (raw?.status === "error") {
-    throw new Error(raw.message || "Error en reporte");
   }
   const marcas = await fetchMarcasGraficos12();
   return { ...(raw ?? {}), ...marcas };

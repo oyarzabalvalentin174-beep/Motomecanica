@@ -2,7 +2,7 @@ import AppSidebar from "@/components/AppSidebar";
 import DevolucionClient from "@/components/DevolucionClient";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import UserPop from "@/components/UserPop";
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +31,12 @@ export default async function DevolucionPage() {
 
     let devMap = new Map();
     if (detalleIds.length > 0) {
-      const devoluciones = await query(
-        `select detalle_venta_id, coalesce(sum(cantidad), 0)::int as ya_devuelto
-         from app.detalle_devolucion
-         where detalle_venta_id = any($1::int[])
-         group by detalle_venta_id`,
-        [detalleIds],
-      );
+      const rawDev = await exec("spgetcantidadesdevueltas", {
+        detalle_ids: JSON.stringify(detalleIds),
+      });
+      const devoluciones = Array.isArray(rawDev?.data) ? rawDev.data : Array.isArray(rawDev) ? rawDev : [];
       devMap = new Map(
-        (Array.isArray(devoluciones) ? devoluciones : []).map((r) => [
+        devoluciones.map((r) => [
           Number(r.detalle_venta_id),
           Number(r.ya_devuelto ?? 0),
         ]),

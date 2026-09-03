@@ -2,7 +2,7 @@ import AppSidebar from "@/components/AppSidebar";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import PerfilClient from "@/components/PerfilClient";
 import UserPop from "@/components/UserPop";
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +31,21 @@ async function getPerfil() {
     }
 
     if (Number.isFinite(userId) && userId > 0) {
-      const rows = await query(
-        `select id_usuario, nombreusuario, nombre, apellido, ultimologin
-         from app.usuario
-         where id_usuario = $1
-         limit 1`,
-        [userId],
-      );
-      const row = rows?.[0] || null;
-      return { user: row, error: row ? null : "No se encontró el usuario" };
+      const raw = await exec("spgetusuarioporid", { id_usuario: userId });
+      const row = Array.isArray(raw?.data) ? raw.data[0] : Array.isArray(raw) ? raw[0] : null;
+      if (row) {
+        return {
+          user: {
+            id_usuario: row.id_usuario,
+            nombreusuario: row.nombreusuario,
+            nombre: row.nombre,
+            apellido: row.apellido,
+            ultimologin: row.ultimologin || null,
+          },
+          error: null,
+        };
+      }
+      return { user: null, error: "No se encontró el usuario" };
     }
 
     return { user: null, error: "No se encontró el usuario logueado" };

@@ -46,9 +46,18 @@ function parseValue(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function assertIdent(name, label) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(String(name ?? ""))) {
+    throw new Error(`${label} inválido`);
+  }
+}
+
 function procPar(par = {}) {
   const entries = Object.entries(par).filter(([, value]) => value !== undefined);
-  return entries.map(([key, value]) => `p${key} := ${parseValue(value)}`).join(", ");
+  return entries.map(([key, value]) => {
+    assertIdent(key, "Parámetro");
+    return `p${key} := ${parseValue(value)}`;
+  }).join(", ");
 }
 
 function parseDbPayload(raw) {
@@ -67,6 +76,7 @@ function parseDbPayload(raw) {
 }
 
 export async function exec(sp, par = {}) {
+  assertIdent(sp, "Procedimiento");
   const db = getDb();
   const namedParams = procPar(par);
   const query = namedParams

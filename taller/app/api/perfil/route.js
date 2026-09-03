@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,14 +31,12 @@ async function getCurrentUser(session) {
   }
 
   if (Number.isFinite(userId) && userId > 0) {
-    const rows = await query(
-      `select id_usuario, nombreusuario, nombre, apellido, ultimologin, "contraseña" as contrasena
-       from app.usuario
-       where id_usuario = $1
-       limit 1`,
-      [userId],
-    );
-    return rows?.[0] || null;
+    try {
+      const raw = await exec("spgetusuarioporid", { id_usuario: userId });
+      return normalizeUser(raw);
+    } catch {
+      return null;
+    }
   }
 
   return null;

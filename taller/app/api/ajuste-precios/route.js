@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { query } from "@/components/db";
+import { exec } from "@/components/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,36 +42,31 @@ export async function POST(request) {
   const factor = operation === "aumentar" ? 1 + porcentaje / 100 : 1 - porcentaje / 100;
   const safeFactor = Math.max(0, factor);
 
-  try {
-    let sql = `
-      update app.producto p
-      set
-        precio_venta = round(greatest(0, coalesce(p.precio_venta, 0) * $1)::numeric, 2),
-        precio_compra = round(greatest(0, coalesce(p.precio_compra, 0) * $1)::numeric, 2)
-      where coalesce(p.archivado, false) = false
-    `;
-    const params = [safeFactor];
-
-    if (scope === "producto") {
-      const idProducto = Number(body?.id_producto);
-      if (!Number.isFinite(idProducto) || idProducto <= 0) {
-        return NextResponse.json({ error: "id_producto inválido" }, { status: 400 });
-      }
-      sql += " and p.id_producto = $2 returning p.id_producto";
-      params.push(idProducto);
-    } else if (scope === "marca") {
-      const marcaId = Number(body?.marca_id);
-      if (!Number.isFinite(marcaId) || marcaId <= 0) {
-        return NextResponse.json({ error: "marca_id inválido" }, { status: 400 });
-      }
-      sql += " and p.marca_id = $2 returning p.id_producto";
-      params.push(marcaId);
-    } else {
-      sql += " returning p.id_producto";
+  let idProducto = null;
+  let marcaId = null;
+  if (scope === "producto") {
+    idProducto = Number(body?.id_producto);
+    if (!Number.isFinite(idProducto) || idProducto <= 0) {
+      return NextResponse.json({ error: "id_producto inválido" }, { status: 400 });
     }
+  } else if (scope === "marca") {
+    marcaId = Number(body?.marca_id);
+    if (!Number.isFinite(marcaId) || marcaId <= 0) {
+      return NextResponse.json({ error: "marca_id inválido" }, { status: 400 });
+    }
+  }
 
-    const rows = await query(sql, params);
-    const count = Array.isArray(rows) ? rows.length : 0;
+  try {
+    const raw = await exec("spajusteprecios", {
+      scope,
+      factor: safeFactor,
+      id_producto: idProducto,
+      marca_id: marcaId,
+    });
+    if (raw?.status === "error") {
+      return NextResponse.json({ error: raw.message || "No se pudo ajustar" }, { status: 422 });
+    }
+    const count = Number(raw?.data?.updated ?? 0);
 
     return NextResponse.json({
       status: "success",

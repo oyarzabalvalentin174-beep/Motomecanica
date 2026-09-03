@@ -2,7 +2,7 @@ import AppSidebar from "@/components/AppSidebar";
 import GlobalPageLoader from "@/components/GlobalPageLoader";
 import IngresoPedidoClient from "@/components/IngresoPedidoClient";
 import UserPop from "@/components/UserPop";
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 import { requireSession } from "@/lib/requireSession";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +24,12 @@ export default async function IngresoPedidoPage() {
   try {
     const [rawProductos, rawMarcas, rawSectores] = await Promise.all([
       exec("spgetproductos", { archivado: null }),
-      query("select id_marca, nombre from app.marca order by nombre"),
-      query("select id_sector, descripcion from app.sector order by descripcion"),
+      exec("spgetmarcas", {}),
+      exec("spgetsectores", {}),
     ]);
     productos = normalizeArray(rawProductos);
-    marcas = Array.isArray(rawMarcas) ? rawMarcas : [];
-    sectores = Array.isArray(rawSectores) ? rawSectores : [];
+    marcas = normalizeArray(rawMarcas);
+    sectores = normalizeArray(rawSectores);
   } catch (e) {
     listError = e?.message || "No se pudieron cargar los datos";
   }

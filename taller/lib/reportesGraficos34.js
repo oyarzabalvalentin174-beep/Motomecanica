@@ -1,7 +1,6 @@
-import { exec, query } from "@/components/db";
+import { exec } from "@/components/db";
 import { resolveGraficos12Range } from "@/lib/reportesGraficos12";
-
-const TZ = "America/Argentina/Buenos_Aires";
+import { normalizeSpList } from "@/lib/execHelpers";
 
 function ymdFromDate(d) {
   const y = d.getFullYear();
@@ -95,42 +94,19 @@ function labelWeek(weekStartYmd) {
 }
 
 /**
- * Serie de ganancia por bucket:
- * precio cobrado = precio_unitario * (total / (total + descuento))  → aplica dto. efectivo/transf.
+ * Serie de ganancia por bucket (SP):
+ * precio cobrado = precio_unitario * factor (dto. venta o método de pago)
  * ganancia = SUM(cantidad * (precio_cobrado - precio_compra))
  */
 export async function fetchVentasSerieAgregada(par) {
   const { periodo, desde, hasta } = resolveGraficos12Range(par);
-
-  const gananciaExpr = `COALESCE(SUM(
-    dv.cantidad * (
-      dv.precio_unitario * CASE
-        WHEN COALESCE(v.total, 0) + COALESCE(v.descuento, 0) > 0
-          THEN COALESCE(v.total, 0) / (COALESCE(v.total, 0) + COALESCE(v.descuento, 0))
-        WHEN LOWER(TRIM(COALESCE(v.metodo_pago, ''))) = 'efectivo' THEN 0.9
-        WHEN LOWER(TRIM(COALESCE(v.metodo_pago, ''))) = 'transferencia' THEN 0.95
-        ELSE 1
-      END
-      - COALESCE(p.precio_compra, 0)
-    )
-  ), 0)::numeric(14,2)`;
+  const raw = await exec("spgetreportegananciaserie", { periodo, desde, hasta });
+  if (raw?.status === "error") throw new Error(raw.message || "Error en ganancia");
+  const rows = normalizeSpList(raw);
 
   if (periodo === "dia") {
-    const rows = await query(
-      `SELECT
-         EXTRACT(HOUR FROM (v.fecha AT TIME ZONE $2))::int AS hora,
-         ${gananciaExpr} AS total,
-         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
-       FROM app.detalle_venta dv
-       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-       WHERE (v.fecha AT TIME ZONE $2)::date = $1::date
-       GROUP BY 1
-       ORDER BY 1`,
-      [desde, TZ],
-    );
     const byHour = new Map(
-      (rows ?? []).map((r) => [Number(r.hora), { total: Number(r.total ?? 0), cantidad: Number(r.cantidad_ventas ?? 0) }]),
+      (rows ?? []).map((r) => [Number(r.clave), { total: Number(r.total ?? 0), cantidad: Number(r.cantidad_ventas ?? 0) }]),
     );
     return Array.from({ length: 24 }, (_, h) => {
       const hit = byHour.get(h) || { total: 0, cantidad: 0 };
@@ -145,22 +121,9 @@ export async function fetchVentasSerieAgregada(par) {
   }
 
   if (periodo === "semana") {
-    const rows = await query(
-      `SELECT
-         to_char((v.fecha AT TIME ZONE $3)::date, 'YYYY-MM-DD') AS dia,
-         ${gananciaExpr} AS total,
-         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
-       FROM app.detalle_venta dv
-       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-       WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-       GROUP BY 1
-       ORDER BY 1`,
-      [desde, hasta, TZ],
-    );
     const byDay = new Map(
       (rows ?? []).map((r) => {
-        const key = toYmd(r.dia);
+        const key = toYmd(r.clave);
         return [key, { total: Number(r.total ?? 0), cantidad: Number(r.cantidad_ventas ?? 0) }];
       }),
     );
@@ -176,22 +139,9 @@ export async function fetchVentasSerieAgregada(par) {
   }
 
   if (periodo === "ultimomes") {
-    const rows = await query(
-      `SELECT
-         to_char(date_trunc('week', (v.fecha AT TIME ZONE $3)::timestamp)::date, 'YYYY-MM-DD') AS semana,
-         ${gananciaExpr} AS total,
-         COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
-       FROM app.detalle_venta dv
-       INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-       INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-       WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-       GROUP BY 1
-       ORDER BY 1`,
-      [desde, hasta, TZ],
-    );
     const byWeek = new Map(
       (rows ?? []).map((r) => {
-        const key = toYmd(r.semana);
+        const key = toYmd(r.clave);
         return [key, { total: Number(r.total ?? 0), cantidad: Number(r.cantidad_ventas ?? 0) }];
       }),
     );
@@ -206,23 +156,9 @@ export async function fetchVentasSerieAgregada(par) {
     });
   }
 
-  // mes / anio → por mes
-  const rows = await query(
-    `SELECT
-       to_char(date_trunc('month', (v.fecha AT TIME ZONE $3)::date)::date, 'YYYY-MM-DD') AS mes,
-       ${gananciaExpr} AS total,
-       COUNT(DISTINCT v.id_venta)::int AS cantidad_ventas
-     FROM app.detalle_venta dv
-     INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-     INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-     WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-     GROUP BY 1
-     ORDER BY 1`,
-    [desde, hasta, TZ],
-  );
   const byMonth = new Map(
     (rows ?? []).map((r) => {
-      const key = toYmd(r.mes);
+      const key = toYmd(r.clave);
       return [key, { total: Number(r.total ?? 0), cantidad: Number(r.cantidad_ventas ?? 0) }];
     }),
   );
@@ -239,17 +175,9 @@ export async function fetchVentasSerieAgregada(par) {
 
 export async function fetchMetodosPagoPeriodo(par) {
   const { desde, hasta } = resolveGraficos12Range(par);
-  return query(
-    `SELECT
-       COALESCE(NULLIF(TRIM(LOWER(v.metodo_pago)), ''), 'sin_definir') AS metodo,
-       COUNT(*)::int AS cantidad_ventas,
-       COALESCE(SUM(COALESCE(v.total, 0)), 0)::numeric(14,2) AS total_monto
-     FROM app.venta v
-     WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-     GROUP BY 1
-     ORDER BY cantidad_ventas DESC, metodo ASC`,
-    [desde, hasta, TZ],
-  );
+  const raw = await exec("spgetreportemetodospago", { desde, hasta });
+  if (raw?.status === "error") throw new Error(raw.message || "Error en métodos de pago");
+  return normalizeSpList(raw);
 }
 
 /**
@@ -258,43 +186,17 @@ export async function fetchMetodosPagoPeriodo(par) {
 export async function fetchTopMarcasVentasProductos(par, limit = 10) {
   const { desde, hasta } = resolveGraficos12Range(par);
   const lim = Math.min(50, Math.max(1, Number(limit) || 10));
-  return query(
-    `SELECT
-       COALESCE(NULLIF(TRIM(m.nombre), ''), 'Sin marca') AS nombre_marca,
-       COUNT(DISTINCT p.id_producto)::int AS cantidad_productos
-     FROM app.detalle_venta dv
-     INNER JOIN app.venta v ON v.id_venta = dv.id_venta
-     INNER JOIN app.producto p ON p.id_producto = dv.id_producto
-     LEFT JOIN app.marca m ON m.id_marca = p.marca_id
-     WHERE (v.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
-     GROUP BY m.id_marca, m.nombre
-     HAVING COUNT(DISTINCT p.id_producto) > 0
-     ORDER BY cantidad_productos DESC, nombre_marca ASC
-     LIMIT $4`,
-    [desde, hasta, TZ, lim],
-  );
+  const raw = await exec("spgetreportetopmarcasproductos", { desde, hasta, limit: lim });
+  if (raw?.status === "error") throw new Error(raw.message || "Error en top marcas");
+  return normalizeSpList(raw);
 }
 
 /** Carga métodos de pago + serie de ventas agregada (misma ventana de fechas). */
 export async function loadGraficos34(par) {
   const range = resolveGraficos12Range(par);
 
-  let metodos_pago = [];
-  try {
-    metodos_pago = (await fetchMetodosPagoPeriodo(par)) ?? [];
-  } catch {
-    try {
-      const raw = await exec("spgetreportegraficos34", {
-        ...par,
-        periodo: par.periodo === "ultimomes" ? "mes" : par.periodo,
-      });
-      if (Array.isArray(raw?.metodos_pago)) metodos_pago = raw.metodos_pago;
-    } catch {
-      metodos_pago = [];
-    }
-  }
-
-  const [ventas_serie, marcas_ventas_top] = await Promise.all([
+  const [metodos_pago, ventas_serie, marcas_ventas_top] = await Promise.all([
+    fetchMetodosPagoPeriodo(par).catch(() => []),
     fetchVentasSerieAgregada(par),
     fetchTopMarcasVentasProductos(par, 10).catch(() => []),
   ]);
